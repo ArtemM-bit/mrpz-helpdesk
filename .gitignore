@@ -119,6 +119,9 @@ node_modules/
 *.cache
 !**/*.[Cc]ache/
 *.dbmdl
+appsettings.Local.json
+appsettings.*.local.json
+.env
 *.pfx
 *.publishsettings
 *.binlog
