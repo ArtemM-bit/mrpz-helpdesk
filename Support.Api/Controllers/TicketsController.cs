@@ -36,6 +36,7 @@ public sealed class TicketsController(
                 statusCode: StatusCodes.Status500InternalServerError,
                 title: "Не вдалося зберегти заявку.");
         }
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<TicketResponse>> GetById(
@@ -44,6 +45,5 @@ public sealed class TicketsController(
     {
         var ticket = await ticketRepository.GetByIdAsync(id, cancellationToken);
         return ticket is null ? NotFound() : Ok(ticket.ToResponse());
-    }
     }
 }
