@@ -15,6 +15,9 @@ public sealed class TicketsController(
     ITicketRepository ticketRepository) : ControllerBase
 {
     [HttpPost]
+    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(Dictionary<string, string[]>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> Create(
         [FromBody] CreateTicketRequest request,
         CancellationToken cancellationToken)
@@ -39,6 +42,8 @@ public sealed class TicketsController(
     }
 
     [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TicketResponse>> GetById(
         Guid id,
         CancellationToken cancellationToken)

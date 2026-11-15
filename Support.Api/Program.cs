@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Support.Api;
 using Support.Api.Data;
 using Support.Api.Services;
 
@@ -13,7 +14,7 @@ if (string.IsNullOrWhiteSpace(supportDatabaseConnection))
 }
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddOperationTransformer(TicketOpenApiTransformer.TransformAsync));
 builder.Services.AddDbContext<SupportDbContext>(options => options.UseSqlServer(supportDatabaseConnection));
 builder.Services.AddApplicationServices();
 

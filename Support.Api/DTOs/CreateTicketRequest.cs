@@ -13,6 +13,7 @@ public sealed record CreateTicketRequest
     [MaxLength(4000)]
     public required string Description { get; init; }
 
+    [Required]
     public int CategoryId { get; init; }
 
     public Priority Priority { get; init; }
