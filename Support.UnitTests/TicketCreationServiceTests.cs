@@ -13,7 +13,8 @@ public sealed class TicketCreationServiceTests
     {
         var createdAt = new DateTimeOffset(2026, 2, 20, 14, 30, 0, TimeSpan.Zero);
         await using var context = await CreateContextWithCategoryAsync();
-        var service = CreateService(context, createdAt);
+        var repository = new FakeTicketRepository();
+        var service = CreateService(context, repository, createdAt);
         var request = ValidRequest();
 
         var result = await service.CreateAsync(request);
@@ -29,8 +30,7 @@ public sealed class TicketCreationServiceTests
         Assert.Equal(createdAt, result.Ticket.CreatedAt);
         Assert.Equal(TimeSpan.Zero, result.Ticket.CreatedAt.Offset);
 
-        var savedTickets = await context.Tickets.ToListAsync();
-        var savedTicket = Assert.Single(savedTickets);
+        var savedTicket = Assert.Single(repository.AddedTickets);
         Assert.Equal(result.Ticket.Id, savedTicket.Id);
         Assert.Equal(Status.New, savedTicket.Status);
         Assert.Equal(createdAt, savedTicket.CreatedAt);
@@ -40,7 +40,8 @@ public sealed class TicketCreationServiceTests
     public async Task CreateAsync_InvalidRequest_ReturnsFieldErrorsWithoutSavingTicket()
     {
         await using var context = await CreateContextWithCategoryAsync();
-        var service = CreateService(context, DateTimeOffset.UtcNow);
+        var repository = new FakeTicketRepository();
+        var service = CreateService(context, repository, new DateTimeOffset(2026, 2, 20, 14, 30, 0, TimeSpan.Zero));
         var request = ValidRequest() with { Title = "   " };
 
         var result = await service.CreateAsync(request);
@@ -48,13 +49,16 @@ public sealed class TicketCreationServiceTests
         Assert.False(result.IsValid);
         Assert.Null(result.Ticket);
         Assert.Contains(nameof(CreateTicketRequest.Title), result.Errors.Keys);
-        Assert.Empty(await context.Tickets.ToListAsync());
+        Assert.Empty(repository.AddedTickets);
     }
 
-    private static ITicketCreationService CreateService(SupportDbContext context, DateTimeOffset createdAt)
+    private static ITicketCreationService CreateService(
+        SupportDbContext context,
+        ITicketRepository repository,
+        DateTimeOffset createdAt)
     {
         var validator = new CreateTicketRequestValidator(context);
-        return new TicketCreationService(new TicketRepository(context), validator, new FixedClock(createdAt));
+        return new TicketCreationService(repository, validator, new FixedClock(createdAt));
     }
 
     private static CreateTicketRequest ValidRequest() => new()
@@ -78,5 +82,21 @@ public sealed class TicketCreationServiceTests
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock
     {
         public DateTimeOffset UtcNow { get; } = utcNow;
+    }
+
+    private sealed class FakeTicketRepository : ITicketRepository
+    {
+        public List<Ticket> AddedTickets { get; } = [];
+
+        public Task AddAsync(Ticket ticket, CancellationToken cancellationToken = default)
+        {
+            AddedTickets.Add(ticket);
+            return Task.CompletedTask;
+        }
+
+        public Task<Ticket?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(AddedTickets.SingleOrDefault(ticket => ticket.Id == id));
+        }
     }
 }
