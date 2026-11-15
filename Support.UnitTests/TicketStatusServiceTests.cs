@@ -57,13 +57,42 @@ public sealed class TicketStatusServiceTests
     }
 
     [Theory]
+    [InlineData(Status.New, Status.InProgress)]
+    [InlineData(Status.InProgress, Status.Resolved)]
+    [InlineData(Status.Resolved, Status.Closed)]
+    public async Task ChangeStatusAsync_AllowedTransition_ChangesAndSaves(
+        Status currentStatus,
+        Status targetStatus)
+    {
+        var originalResolvedAt = ResolvedAt.AddDays(-1);
+        var ticket = CreateTicket(currentStatus, assigneeId: 7);
+        ticket.ResolvedAt = originalResolvedAt;
+        var repository = new FakeTicketRepository(ticket);
+        var service = new TicketStatusService(repository, new FixedClock(ResolvedAt));
+
+        var result = await service.ChangeStatusAsync(ticket.Id, new ChangeTicketStatusRequest(targetStatus));
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(TicketStatusError.None, result.Error);
+        Assert.Equal(targetStatus, result.Ticket?.Status);
+        Assert.Equal(targetStatus == Status.Resolved ? ResolvedAt : originalResolvedAt, ticket.ResolvedAt);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Theory]
     [InlineData(Status.New, Status.New, TicketStatusError.InvalidTransition)]
+    [InlineData(Status.New, Status.Resolved, TicketStatusError.InvalidTransition)]
+    [InlineData(Status.New, Status.Closed, TicketStatusError.InvalidTransition)]
+    [InlineData(Status.InProgress, Status.New, TicketStatusError.InvalidTransition)]
     [InlineData(Status.InProgress, Status.InProgress, TicketStatusError.InvalidTransition)]
+    [InlineData(Status.InProgress, Status.Closed, TicketStatusError.InvalidTransition)]
+    [InlineData(Status.Resolved, Status.New, TicketStatusError.InvalidTransition)]
+    [InlineData(Status.Resolved, Status.InProgress, TicketStatusError.InvalidTransition)]
     [InlineData(Status.Resolved, Status.Resolved, TicketStatusError.InvalidTransition)]
     [InlineData(Status.Closed, Status.New, TicketStatusError.InvalidTransition)]
     [InlineData(Status.Closed, Status.InProgress, TicketStatusError.InvalidTransition)]
     [InlineData(Status.Closed, Status.Resolved, TicketStatusError.InvalidTransition)]
-    [InlineData(Status.New, Status.InProgress, TicketStatusError.AssigneeRequired)]
+    [InlineData(Status.Closed, Status.Closed, TicketStatusError.InvalidTransition)]
     public async Task ChangeStatusAsync_RejectedTransition_DoesNotChangeOrSave(
         Status currentStatus,
         Status targetStatus,
@@ -78,7 +107,28 @@ public sealed class TicketStatusServiceTests
         var result = await service.ChangeStatusAsync(ticket.Id, new ChangeTicketStatusRequest(targetStatus));
 
         Assert.Equal(expectedError, result.Error);
+        Assert.Null(result.Ticket);
         Assert.Equal(currentStatus, ticket.Status);
+        Assert.Equal(originalResolvedAt, ticket.ResolvedAt);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_NewToInProgress_WithoutAssignee_DoesNotChangeOrSave()
+    {
+        var originalResolvedAt = ResolvedAt.AddDays(-1);
+        var ticket = CreateTicket(Status.New, assigneeId: null);
+        ticket.ResolvedAt = originalResolvedAt;
+        var repository = new FakeTicketRepository(ticket);
+        var service = new TicketStatusService(repository, new FixedClock(ResolvedAt));
+
+        var result = await service.ChangeStatusAsync(
+            ticket.Id,
+            new ChangeTicketStatusRequest(Status.InProgress));
+
+        Assert.Equal(TicketStatusError.AssigneeRequired, result.Error);
+        Assert.Null(result.Ticket);
+        Assert.Equal(Status.New, ticket.Status);
         Assert.Equal(originalResolvedAt, ticket.ResolvedAt);
         Assert.Equal(0, repository.SaveCount);
     }

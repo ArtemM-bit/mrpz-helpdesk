@@ -63,6 +63,20 @@ public sealed class TicketCommentServiceTests
         Assert.Equal(1, repository.SaveCount);
     }
 
+    [Fact]
+    public async Task CreateAsync_OneCharacter_IsAccepted()
+    {
+        var ticket = CreateTicket();
+        var repository = new FakeTicketRepository(ticket, new User { Id = 1 });
+        var service = CreateService(repository, "1");
+
+        var result = await service.CreateAsync(ticket.Id, new CreateCommentRequest("x"));
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal("x", result.Comment?.Text);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
     [Theory]
     [MemberData(nameof(InvalidTexts))]
     public async Task CreateAsync_InvalidText_DoesNotSave(string text)
@@ -74,13 +88,15 @@ public sealed class TicketCommentServiceTests
         var result = await service.CreateAsync(ticket.Id, new CreateCommentRequest(text));
 
         Assert.Equal(TicketCommentError.InvalidText, result.Error);
+        Assert.Null(result.Comment);
         Assert.Equal(0, repository.SaveCount);
     }
 
     public static IEnumerable<object[]> InvalidTexts =>
     [
         [" \t\r\n "],
-        [new string('x', 2001)]
+        [new string('x', 2001)],
+        [null!]
     ];
 
     [Fact]

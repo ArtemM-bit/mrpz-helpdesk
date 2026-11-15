@@ -71,6 +71,7 @@ public sealed class TicketAssignmentServiceTests
         var result = await service.AssignAsync(ticket.Id, new AssignTicketRequest(3));
 
         Assert.Equal(TicketAssignmentError.InvalidAssignee, result.Error);
+        Assert.Null(result.Ticket);
         Assert.Equal(2, ticket.AssigneeId);
         Assert.Equal(0, repository.SaveCount);
     }
@@ -85,6 +86,7 @@ public sealed class TicketAssignmentServiceTests
         var result = await service.AssignAsync(ticket.Id, new AssignTicketRequest(3));
 
         Assert.Equal(TicketAssignmentError.TicketClosed, result.Error);
+        Assert.Null(result.Ticket);
         Assert.Equal(2, ticket.AssigneeId);
         Assert.Equal(Status.Closed, ticket.Status);
         Assert.Equal(0, repository.SaveCount);
