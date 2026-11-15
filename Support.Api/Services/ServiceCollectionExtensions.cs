@@ -10,6 +10,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         services.AddScoped<IStatusService, StatusService>();
+        services.AddScoped<CreateTicketRequestValidator>();
 
         return services;
     }

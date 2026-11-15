@@ -6,7 +6,7 @@ namespace Support.Api.DTOs;
 public sealed record CreateTicketRequest
 {
     [Required]
-    [MaxLength(200)]
+    [MaxLength(150)]
     public required string Title { get; init; }
 
     [Required]
