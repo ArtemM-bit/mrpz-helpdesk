@@ -15,6 +15,34 @@ public static class TicketOpenApiTransformer
         }
         """;
 
+    private const string AssignedTicketResponseExample = """
+        {
+          "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+          "title": "Не працює принтер",
+          "description": "Принтер не друкує документи після заміни картриджа.",
+          "categoryId": 1,
+          "priority": 2,
+          "status": 0,
+          "createdAt": "2026-01-15T10:30:00+00:00",
+          "assigneeId": 2,
+          "resolvedAt": null
+        }
+        """;
+
+    private const string InProgressTicketResponseExample = """
+        {
+          "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+          "title": "Не працює принтер",
+          "description": "Принтер не друкує документи після заміни картриджа.",
+          "categoryId": 1,
+          "priority": 2,
+          "status": 1,
+          "createdAt": "2026-01-15T10:30:00+00:00",
+          "assigneeId": 2,
+          "resolvedAt": null
+        }
+        """;
+
     private const string TicketResponseExample = """
         {
           "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
@@ -35,6 +63,44 @@ public static class TicketOpenApiTransformer
             "Вказано невідому категорію."
           ]
         }
+        """;
+
+    private const string AssignRequestExample = """
+        {
+          "assigneeId": 2
+        }
+        """;
+
+    private const string ChangeStatusRequestExample = """
+        {
+          "status": 1
+        }
+        """;
+
+    private const string CreateCommentRequestExample = """
+        {
+          "text": "Після перезапуску принтер працює."
+        }
+        """;
+
+    private const string CommentResponseExample = """
+        {
+          "id": "7f9619ff-8b86-d011-b42d-00cf4fc964ff",
+          "text": "Після перезапуску принтер працює.",
+          "authorId": 1,
+          "createdAt": "2026-01-15T10:45:00+00:00"
+        }
+        """;
+
+    private const string CommentsResponseExample = """
+        [
+          {
+            "id": "7f9619ff-8b86-d011-b42d-00cf4fc964ff",
+            "text": "Після перезапуску принтер працює.",
+            "authorId": 1,
+            "createdAt": "2026-01-15T10:45:00+00:00"
+          }
+        ]
         """;
 
     public static Task TransformAsync(
@@ -60,6 +126,8 @@ public static class TicketOpenApiTransformer
                 requestContent.Example = JsonNode.Parse(CreateRequestExample);
             }
 
+            SetResponseDescription(operation, "201", "Заявку створено; відповідь містить заявку, а заголовок `Location` — її URL.");
+            SetResponseDescription(operation, "400", "Помилки валідації у вигляді об'єкта, де ключ — назва поля, а значення — масив повідомлень.");
             SetContentExample(operation, "201", JsonNode.Parse(TicketResponseExample)!);
             SetContentExample(operation, "400", JsonNode.Parse(ValidationErrorExample)!);
         }
@@ -67,7 +135,62 @@ public static class TicketOpenApiTransformer
         {
             operation.Summary = "Отримати заявку за ID";
             operation.Description = "Повертає збережену заявку для вказаного UUID. Для невідомого ID повертається `404 Not Found` без тіла відповіді.";
+            SetResponseDescription(operation, "200", "Заявку знайдено; повертається схема `TicketResponse`.");
+            SetResponseDescription(operation, "404", "Заявку з таким UUID не знайдено; тіло відповіді відсутнє.");
             SetContentExample(operation, "200", JsonNode.Parse(TicketResponseExample)!);
+        }
+        else if (path == "api/tickets/{id}/assignee" && context.Description.HttpMethod == "PATCH")
+        {
+            operation.Summary = "Призначити працівника на заявку";
+            operation.Description = "Призначає заявці працівника підтримки за його `assigneeId`. Тіло запиту відповідає DTO `AssignTicketRequest`; успіх повертає оновлену заявку за схемою `TicketResponse`.";
+            SetRequestExample(operation, AssignRequestExample);
+            SetResponseDescription(operation, "200", "Працівника призначено; повертається оновлена заявка.");
+            SetResponseDescription(operation, "400", "Працівника з таким ID не знайдено або він не є працівником підтримки; тіло відповіді відсутнє.");
+            SetResponseDescription(operation, "404", "Заявку з таким UUID не знайдено; тіло відповіді відсутнє.");
+            SetResponseDescription(operation, "409", "Заявка вже має статус `Closed` і не може бути змінена; тіло відповіді відсутнє.");
+            SetContentExample(operation, "200", JsonNode.Parse(AssignedTicketResponseExample)!);
+        }
+        else if (path == "api/tickets/{id}/status" && context.Description.HttpMethod == "PATCH")
+        {
+            operation.Summary = "Змінити статус заявки";
+            operation.Description = """
+                Приймає DTO `ChangeTicketStatusRequest` з числовим значенням статусу й повертає оновлену заявку за схемою `TicketResponse`.
+
+                Значення статусів: `0` = `New`, `1` = `InProgress`, `2` = `Resolved`, `3` = `Closed`.
+
+                | Поточний статус | Дозволений наступний статус | Умова |
+                | --- | --- | --- |
+                | `New` | `InProgress` | Заявці має бути призначено працівника підтримки. |
+                | `InProgress` | `Resolved` | Без додаткових умов. |
+                | `Resolved` | `Closed` | Без додаткових умов. |
+                | `Closed` | — | Переходів немає. |
+
+                Інші переходи, повторне встановлення поточного статусу та будь-яка зміна статусу `Closed` повертають `409 Conflict`. Якщо для `New → InProgress` не призначено працівника, також повертається `409 Conflict`. `ResolvedAt` встановлюється серверним поточним часом UTC лише під час переходу в `Resolved`; перехід у `Closed` зберігає цю дату, а клієнт не може передати чи змінити її.
+                """;
+            SetRequestExample(operation, ChangeStatusRequestExample);
+            SetResponseDescription(operation, "200", "Статус змінено; повертається оновлена заявка.");
+            SetResponseDescription(operation, "400", "Передано невідоме числове значення статусу; тіло відповіді відсутнє.");
+            SetResponseDescription(operation, "404", "Заявку з таким UUID не знайдено; тіло відповіді відсутнє.");
+            SetResponseDescription(operation, "409", "Перехід заборонений або для початку роботи заявці не призначено працівника; тіло відповіді відсутнє.");
+            SetContentExample(operation, "200", JsonNode.Parse(InProgressTicketResponseExample)!);
+        }
+        else if (path == "api/tickets/{id}/comments" && context.Description.HttpMethod == "POST")
+        {
+            operation.Summary = "Додати коментар до заявки";
+            operation.Description = "Приймає DTO `CreateCommentRequest` лише з полем `text` довжиною 1–2000 символів після обрізання пробілів по краях; автор не передається клієнтом. API бере ID автора з claim `ClaimTypes.NameIdentifier` поточного користувача запиту й шукає відповідного користувача в системі. Якщо claim відсутній/не є коректним ID або користувача не знайдено, повертається `404 Not Found`. Успішна відповідь `TicketCommentResponse` містить встановлений сервером `authorId` і час створення. Коментарі можна додавати до заявки в будь-якому статусі, крім `Closed`.";
+            SetRequestExample(operation, CreateCommentRequestExample);
+            SetResponseDescription(operation, "201", "Коментар створено; повертається `TicketCommentResponse`, а `Location` указує на ресурс коментарів заявки.");
+            SetResponseDescription(operation, "400", "Текст порожній або довший за 2000 символів після обрізання пробілів; тіло відповіді відсутнє.");
+            SetResponseDescription(operation, "404", "Заявку або користувача-автора не знайдено; тіло відповіді відсутнє.");
+            SetResponseDescription(operation, "409", "До заявки зі статусом `Closed` не можна додати коментар; тіло відповіді відсутнє.");
+            SetContentExample(operation, "201", JsonNode.Parse(CommentResponseExample)!);
+        }
+        else if (path == "api/tickets/{id}/comments" && context.Description.HttpMethod == "GET")
+        {
+            operation.Summary = "Отримати коментарі заявки";
+            operation.Description = "Повертає масив `TicketCommentResponse`. Сортування: `CreatedAt` за зростанням, а для однакового часу — `Id` за зростанням. Якщо коментарів немає, повертається порожній масив; для неіснуючого ID заявки цей маршрут також повертає порожній масив.";
+            SetResponseDescription(operation, "200", "Повертається масив коментарів; він може бути порожнім.");
+            SetContentExample(operation, "200", JsonNode.Parse(CommentsResponseExample)!);
         }
 
         return Task.CompletedTask;
@@ -79,6 +202,22 @@ public static class TicketOpenApiTransformer
             response.Content.TryGetValue("application/json", out var content))
         {
             content.Example = example;
+        }
+    }
+
+    private static void SetRequestExample(OpenApiOperation operation, string example)
+    {
+        if (operation.RequestBody?.Content.TryGetValue("application/json", out var content) == true)
+        {
+            content.Example = JsonNode.Parse(example);
+        }
+    }
+
+    private static void SetResponseDescription(OpenApiOperation operation, string statusCode, string description)
+    {
+        if (operation.Responses.TryGetValue(statusCode, out var response))
+        {
+            response.Description = description;
         }
     }
 }
