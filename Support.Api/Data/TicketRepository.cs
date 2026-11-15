@@ -17,4 +17,20 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
             .AsNoTracking()
             .SingleOrDefaultAsync(ticket => ticket.Id == id, cancellationToken);
     }
+
+    public Task<Ticket?> GetForAssignmentAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return dbContext.Tickets
+            .SingleOrDefaultAsync(ticket => ticket.Id == id, cancellationToken);
+    }
+
+    public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default)
+    {
+        return dbContext.Users.SingleOrDefaultAsync(user => user.Id == id, cancellationToken);
+    }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        return dbContext.SaveChangesAsync(cancellationToken);
+    }
 }

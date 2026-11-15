@@ -98,5 +98,13 @@ public sealed class TicketCreationServiceTests
         {
             return Task.FromResult(AddedTickets.SingleOrDefault(ticket => ticket.Id == id));
         }
+
+        public Task<Ticket?> GetForAssignmentAsync(Guid id, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Ticket?>(null);
+
+        public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default) =>
+            Task.FromResult<User?>(null);
+
+        public Task SaveChangesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

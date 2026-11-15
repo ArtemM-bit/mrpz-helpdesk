@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<CreateTicketRequestValidator>();
         services.AddScoped<ITicketCreationService, TicketCreationService>();
+        services.AddScoped<ITicketAssignmentService, TicketAssignmentService>();
 
         return services;
     }
