@@ -1,0 +1,37 @@
+using System.Data.Common;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Support.Api.DTOs;
+using Support.Api.Services;
+
+namespace Support.Api.Controllers;
+
+[ApiController]
+[Route("api/tickets")]
+public sealed class TicketsController(ITicketCreationService ticketCreationService) : ControllerBase
+{
+    [HttpPost]
+    public async Task<IActionResult> Create(
+        [FromBody] CreateTicketRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await ticketCreationService.CreateAsync(request, cancellationToken);
+            if (!result.IsValid)
+            {
+                return BadRequest(result.Errors);
+            }
+
+            var ticket = result.Ticket!;
+            return Created($"/api/tickets/{ticket.Id}", ticket);
+        }
+        catch (Exception exception) when (exception is DbUpdateException or DbException)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Не вдалося зберегти заявку.");
+        }
+    }
+}

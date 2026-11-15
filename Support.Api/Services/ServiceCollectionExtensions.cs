@@ -11,6 +11,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         services.AddScoped<IStatusService, StatusService>();
         services.AddScoped<CreateTicketRequestValidator>();
+        services.AddScoped<ITicketCreationService, TicketCreationService>();
 
         return services;
     }
