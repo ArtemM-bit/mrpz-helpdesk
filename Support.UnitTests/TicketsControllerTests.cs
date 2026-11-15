@@ -20,6 +20,7 @@ public sealed class TicketsControllerTests
         var createMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Create));
         var getByIdMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.GetById));
         var assignMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Assign));
+        var changeStatusMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.ChangeStatus));
 
         Assert.Equal("api/tickets", controllerRoute?.Template);
         Assert.NotNull(createMethod);
@@ -28,6 +29,8 @@ public sealed class TicketsControllerTests
         Assert.Equal("{id:guid}", getByIdMethod.GetCustomAttribute<HttpGetAttribute>()?.Template);
         Assert.NotNull(assignMethod);
         Assert.Equal("{id:guid}/assignee", assignMethod.GetCustomAttribute<HttpPatchAttribute>()?.Template);
+        Assert.NotNull(changeStatusMethod);
+        Assert.Equal("{id:guid}/status", changeStatusMethod.GetCustomAttribute<HttpPatchAttribute>()?.Template);
     }
 
     [Fact]
@@ -37,7 +40,8 @@ public sealed class TicketsControllerTests
         var controller = new TicketsController(new StubTicketCreationService(
             _ => Task.FromResult(new CreateTicketResult(ticket, EmptyErrors()))),
             new StubTicketRepository(),
-            new StubTicketAssignmentService(_ => throw new InvalidOperationException()));
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -57,7 +61,8 @@ public sealed class TicketsControllerTests
         var controller = new TicketsController(new StubTicketCreationService(
             _ => Task.FromResult(new CreateTicketResult(null, errors))),
             new StubTicketRepository(),
-            new StubTicketAssignmentService(_ => throw new InvalidOperationException()));
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -73,7 +78,8 @@ public sealed class TicketsControllerTests
         var controller = new TicketsController(new StubTicketCreationService(
             _ => Task.FromException<CreateTicketResult>(new DbUpdateException(privateDatabaseDetails))),
             new StubTicketRepository(),
-            new StubTicketAssignmentService(_ => throw new InvalidOperationException()));
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -99,7 +105,8 @@ public sealed class TicketsControllerTests
                 Status = ticket.Status,
                 CreatedAt = ticket.CreatedAt
             })),
-            new StubTicketAssignmentService(_ => throw new InvalidOperationException()));
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService());
 
         var result = await controller.GetById(ticket.Id, CancellationToken.None);
 
@@ -114,7 +121,8 @@ public sealed class TicketsControllerTests
         var controller = new TicketsController(
             new StubTicketCreationService(_ => throw new InvalidOperationException()),
             new StubTicketRepository(_ => Task.FromResult<Ticket?>(null)),
-            new StubTicketAssignmentService(_ => throw new InvalidOperationException()));
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService());
 
         var result = await controller.GetById(Guid.NewGuid(), CancellationToken.None);
 
@@ -129,7 +137,8 @@ public sealed class TicketsControllerTests
             new StubTicketCreationService(_ => throw new InvalidOperationException()),
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => Task.FromResult(
-                new TicketAssignmentResult(response, TicketAssignmentError.None))));
+                new TicketAssignmentResult(response, TicketAssignmentError.None))),
+            UnusedStatusService());
 
         var result = await controller.Assign(response.Id, new AssignTicketRequest(2), CancellationToken.None);
 
@@ -150,9 +159,61 @@ public sealed class TicketsControllerTests
             new StubTicketCreationService(_ => throw new InvalidOperationException()),
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => Task.FromResult(
-                new TicketAssignmentResult(null, assignmentError))));
+                new TicketAssignmentResult(null, assignmentError))),
+            UnusedStatusService());
 
         var result = await controller.Assign(Guid.NewGuid(), new AssignTicketRequest(2), CancellationToken.None);
+
+        var status = result.Result switch
+        {
+            ObjectResult objectResult => objectResult.StatusCode,
+            StatusCodeResult statusCodeResult => statusCodeResult.StatusCode,
+            _ => null
+        };
+        Assert.Equal(expectedStatus, status);
+    }
+
+    [Fact]
+    public async Task ChangeStatus_ValidRequest_Returns200WithUpdatedTicket()
+    {
+        var response = CreateResponse() with { Status = Status.InProgress, AssigneeId = 2 };
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            new StubTicketStatusService((_, _) => Task.FromResult(
+                new TicketStatusResult(response, TicketStatusError.None))));
+
+        var result = await controller.ChangeStatus(
+            response.Id,
+            new ChangeTicketStatusRequest(Status.InProgress),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status200OK, ok.StatusCode);
+        Assert.Equal(response, ok.Value);
+    }
+
+    [Theory]
+    [InlineData(TicketStatusError.InvalidStatus, StatusCodes.Status400BadRequest)]
+    [InlineData(TicketStatusError.TicketNotFound, StatusCodes.Status404NotFound)]
+    [InlineData(TicketStatusError.InvalidTransition, StatusCodes.Status409Conflict)]
+    [InlineData(TicketStatusError.AssigneeRequired, StatusCodes.Status409Conflict)]
+    public async Task ChangeStatus_FailedOperation_ReturnsMappedStatus(
+        TicketStatusError statusError,
+        int expectedStatus)
+    {
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            new StubTicketStatusService((_, _) => Task.FromResult(
+                new TicketStatusResult(null, statusError))));
+
+        var result = await controller.ChangeStatus(
+            Guid.NewGuid(),
+            new ChangeTicketStatusRequest(Status.InProgress),
+            CancellationToken.None);
 
         var status = result.Result switch
         {
@@ -184,6 +245,9 @@ public sealed class TicketsControllerTests
 
     private static IReadOnlyDictionary<string, string[]> EmptyErrors() =>
         new Dictionary<string, string[]>();
+
+    private static StubTicketStatusService UnusedStatusService() =>
+        new((_, _) => throw new InvalidOperationException());
 
     private sealed class StubTicketCreationService(
         Func<CreateTicketRequest, Task<CreateTicketResult>> createAsync) : ITicketCreationService
@@ -217,5 +281,14 @@ public sealed class TicketsControllerTests
             Guid ticketId,
             AssignTicketRequest request,
             CancellationToken cancellationToken = default) => assignAsync(ticketId);
+    }
+
+    private sealed class StubTicketStatusService(
+        Func<Guid, ChangeTicketStatusRequest, Task<TicketStatusResult>> changeStatusAsync) : ITicketStatusService
+    {
+        public Task<TicketStatusResult> ChangeStatusAsync(
+            Guid ticketId,
+            ChangeTicketStatusRequest request,
+            CancellationToken cancellationToken = default) => changeStatusAsync(ticketId, request);
     }
 }

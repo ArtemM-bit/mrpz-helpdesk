@@ -13,7 +13,8 @@ namespace Support.Api.Controllers;
 public sealed class TicketsController(
     ITicketCreationService ticketCreationService,
     ITicketRepository ticketRepository,
-    ITicketAssignmentService ticketAssignmentService) : ControllerBase
+    ITicketAssignmentService ticketAssignmentService,
+    ITicketStatusService ticketStatusService) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status201Created)]
@@ -72,6 +73,36 @@ public sealed class TicketsController(
                 TicketAssignmentError.TicketNotFound => NotFound(),
                 TicketAssignmentError.InvalidAssignee => BadRequest(),
                 TicketAssignmentError.TicketClosed => Conflict(),
+                _ => Ok(result.Ticket)
+            };
+        }
+        catch (Exception exception) when (exception is DbUpdateException or DbException)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Не вдалося зберегти заявку.");
+        }
+    }
+
+    [HttpPatch("{id:guid}/status")]
+    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<TicketResponse>> ChangeStatus(
+        Guid id,
+        [FromBody] ChangeTicketStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await ticketStatusService.ChangeStatusAsync(id, request, cancellationToken);
+            return result.Error switch
+            {
+                TicketStatusError.InvalidStatus => BadRequest(),
+                TicketStatusError.TicketNotFound => NotFound(),
+                TicketStatusError.InvalidTransition or TicketStatusError.AssigneeRequired => Conflict(),
                 _ => Ok(result.Ticket)
             };
         }
