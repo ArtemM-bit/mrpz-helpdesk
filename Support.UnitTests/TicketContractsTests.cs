@@ -37,6 +37,8 @@ public sealed class TicketContractsTests
         Assert.NotEqual(Guid.Empty, ticket.Id);
         Assert.Equal(Status.New, ticket.Status);
         Assert.Equal(createdAt, ticket.CreatedAt);
+        Assert.Null(ticket.AssigneeId);
+        Assert.Null(ticket.ResolvedAt);
         Assert.Equal(request.Title, ticket.Title);
         Assert.Equal(request.Description, ticket.Description);
         Assert.Equal(request.CategoryId, ticket.CategoryId);
@@ -54,7 +56,9 @@ public sealed class TicketContractsTests
             CategoryId = 2,
             Priority = Priority.Critical,
             Status = Status.InProgress,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            AssigneeId = 2,
+            ResolvedAt = DateTimeOffset.UtcNow
         };
 
         var response = ticket.ToResponse();
@@ -66,6 +70,8 @@ public sealed class TicketContractsTests
         Assert.Equal(ticket.Priority, response.Priority);
         Assert.Equal(ticket.Status, response.Status);
         Assert.Equal(ticket.CreatedAt, response.CreatedAt);
+        Assert.Equal(ticket.AssigneeId, response.AssigneeId);
+        Assert.Equal(ticket.ResolvedAt, response.ResolvedAt);
     }
 
     [Fact]
@@ -82,6 +88,33 @@ public sealed class TicketContractsTests
 
         Assert.Equal(typeof(Category), relationship.PrincipalEntityType.ClrType);
         Assert.Equal(DeleteBehavior.Restrict, relationship.DeleteBehavior);
+    }
+
+    [Fact]
+    public void SupportDbContext_ConfiguresOptionalAssigneeAndRequiredCommentRelationships()
+    {
+        var options = new DbContextOptionsBuilder<SupportDbContext>()
+            .UseSqlServer("Server=(local);Database=SupportDb;Trusted_Connection=True;")
+            .Options;
+
+        using var context = new SupportDbContext(options);
+        var ticketType = context.Model.FindEntityType(typeof(Ticket))!;
+        var assigneeRelationship = ticketType.GetForeignKeys()
+            .Single(foreignKey => foreignKey.Properties.Single().Name == nameof(Ticket.AssigneeId));
+        var commentType = context.Model.FindEntityType(typeof(TicketComment))!;
+        var ticketRelationship = commentType.GetForeignKeys()
+            .Single(foreignKey => foreignKey.Properties.Single().Name == nameof(TicketComment.TicketId));
+        var authorRelationship = commentType.GetForeignKeys()
+            .Single(foreignKey => foreignKey.Properties.Single().Name == nameof(TicketComment.AuthorId));
+
+        Assert.False(assigneeRelationship.IsRequired);
+        Assert.Equal(DeleteBehavior.SetNull, assigneeRelationship.DeleteBehavior);
+        Assert.Equal(typeof(Ticket), ticketRelationship.PrincipalEntityType.ClrType);
+        Assert.True(ticketRelationship.IsRequired);
+        Assert.Equal(DeleteBehavior.Restrict, ticketRelationship.DeleteBehavior);
+        Assert.Equal(typeof(User), authorRelationship.PrincipalEntityType.ClrType);
+        Assert.True(authorRelationship.IsRequired);
+        Assert.Equal(DeleteBehavior.Restrict, authorRelationship.DeleteBehavior);
     }
 
     [Fact]
@@ -121,6 +154,25 @@ public sealed class TicketContractsTests
         Assert.Equal(
             ["обладнання", "програмне забезпечення", "мережа", "доступ до облікового запису", "інше"],
             names);
+    }
+
+    [Fact]
+    public async Task SupportDbContext_SeedsDemoUsers()
+    {
+        var options = new DbContextOptionsBuilder<SupportDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new SupportDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var users = await context.Users
+            .OrderBy(user => user.Id)
+            .ToArrayAsync();
+
+        Assert.Equal(2, users.Length);
+        Assert.False(users[0].IsSupportEmployee);
+        Assert.True(users[1].IsSupportEmployee);
+        Assert.All(users, user => Assert.False(string.IsNullOrWhiteSpace(user.FullName)));
     }
 
     [Fact]

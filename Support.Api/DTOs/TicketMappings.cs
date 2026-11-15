@@ -27,6 +27,8 @@ public static class TicketMappings
             ticket.CategoryId,
             ticket.Priority,
             ticket.Status,
-            ticket.CreatedAt);
+            ticket.CreatedAt,
+            ticket.AssigneeId,
+            ticket.ResolvedAt);
     }
 }

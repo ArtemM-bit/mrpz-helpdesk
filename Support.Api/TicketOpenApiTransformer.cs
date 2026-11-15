@@ -23,7 +23,9 @@ public static class TicketOpenApiTransformer
           "categoryId": 1,
           "priority": 2,
           "status": 0,
-          "createdAt": "2026-01-15T10:30:00+00:00"
+          "createdAt": "2026-01-15T10:30:00+00:00",
+          "assigneeId": null,
+          "resolvedAt": null
         }
         """;
 
@@ -50,7 +52,7 @@ public static class TicketOpenApiTransformer
 
                 `priority` — необов'язкове ціле число: `0` = `Low`, `1` = `Medium`, `2` = `High`, `3` = `Critical`; якщо поле пропущене, використовується `0` (`Low`).
 
-                Система генерує `id` і `createdAt`, а `status` встановлює в `0` (`New`). Успішна відповідь повертає заголовок `Location` з URL створеної заявки. Для наведеного прикладу відповіді його значення: `/api/tickets/6f9619ff-8b86-d011-b42d-00cf4fc964ff`.
+                Система генерує `id` і `createdAt`, а `status` встановлює в `0` (`New`). `assigneeId` і `resolvedAt` для нової заявки дорівнюють `null`. Успішна відповідь повертає заголовок `Location` з URL створеної заявки. Для наведеного прикладу відповіді його значення: `/api/tickets/6f9619ff-8b86-d011-b42d-00cf4fc964ff`.
                 """;
 
             if (operation.RequestBody?.Content.TryGetValue("application/json", out var requestContent) == true)

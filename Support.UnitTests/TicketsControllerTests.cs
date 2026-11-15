@@ -128,7 +128,9 @@ public sealed class TicketsControllerTests
         1,
         Priority.High,
         Status.New,
-        DateTimeOffset.UtcNow);
+        DateTimeOffset.UtcNow,
+        null,
+        null);
 
     private static IReadOnlyDictionary<string, string[]> EmptyErrors() =>
         new Dictionary<string, string[]>();

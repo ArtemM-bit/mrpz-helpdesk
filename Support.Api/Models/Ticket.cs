@@ -16,5 +16,13 @@ public sealed class Ticket
 
     public DateTimeOffset CreatedAt { get; set; }
 
+    public int? AssigneeId { get; set; }
+
+    public DateTimeOffset? ResolvedAt { get; set; }
+
     public Category Category { get; set; } = null!;
+
+    public User? Assignee { get; set; }
+
+    public ICollection<TicketComment> Comments { get; set; } = [];
 }

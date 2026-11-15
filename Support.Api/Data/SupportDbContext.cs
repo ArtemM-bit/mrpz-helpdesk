@@ -9,6 +9,10 @@ public sealed class SupportDbContext(DbContextOptions<SupportDbContext> options)
 
     public DbSet<Ticket> Tickets => Set<Ticket>();
 
+    public DbSet<User> Users => Set<User>();
+
+    public DbSet<TicketComment> TicketComments => Set<TicketComment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Category>(entity =>
@@ -58,6 +62,50 @@ public sealed class SupportDbContext(DbContextOptions<SupportDbContext> options)
 
             entity.Property(ticket => ticket.CreatedAt)
                 .IsRequired();
+
+            entity.HasOne(ticket => ticket.Assignee)
+                .WithMany(user => user.AssignedTickets)
+                .HasForeignKey(ticket => ticket.AssigneeId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasMany(ticket => ticket.Comments)
+                .WithOne(comment => comment.Ticket)
+                .HasForeignKey(comment => comment.TicketId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(user => user.Id);
+
+            entity.Property(user => user.FullName)
+                .HasMaxLength(200)
+                .IsUnicode()
+                .IsRequired();
+
+            entity.Property(user => user.IsSupportEmployee)
+                .IsRequired();
+
+            entity.HasData(
+                new User { Id = 1, FullName = "Олена Коваленко", IsSupportEmployee = false },
+                new User { Id = 2, FullName = "Іван Петренко", IsSupportEmployee = true });
+        });
+
+        modelBuilder.Entity<TicketComment>(entity =>
+        {
+            entity.HasKey(comment => comment.Id);
+
+            entity.Property(comment => comment.Text)
+                .IsUnicode()
+                .IsRequired();
+
+            entity.Property(comment => comment.CreatedAt)
+                .IsRequired();
+
+            entity.HasOne(comment => comment.Author)
+                .WithMany(user => user.Comments)
+                .HasForeignKey(comment => comment.AuthorId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

@@ -74,6 +74,9 @@ namespace Support.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("AssigneeId")
+                        .HasColumnType("int");
+
                     b.Property<int>("CategoryId")
                         .HasColumnType("int");
 
@@ -89,6 +92,9 @@ namespace Support.Api.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("int");
 
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -100,25 +106,130 @@ namespace Support.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AssigneeId");
+
                     b.HasIndex("CategoryId");
 
                     b.ToTable("Tickets");
                 });
 
+            modelBuilder.Entity("Support.Api.Models.TicketComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AuthorId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("TicketId");
+
+                    b.ToTable("TicketComments");
+                });
+
+            modelBuilder.Entity("Support.Api.Models.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsSupportEmployee")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Users");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            FullName = "Олена Коваленко",
+                            IsSupportEmployee = false
+                        },
+                        new
+                        {
+                            Id = 2,
+                            FullName = "Іван Петренко",
+                            IsSupportEmployee = true
+                        });
+                });
+
             modelBuilder.Entity("Support.Api.Models.Ticket", b =>
                 {
+                    b.HasOne("Support.Api.Models.User", "Assignee")
+                        .WithMany("AssignedTickets")
+                        .HasForeignKey("AssigneeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Support.Api.Models.Category", "Category")
                         .WithMany("Tickets")
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Assignee");
+
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("Support.Api.Models.TicketComment", b =>
+                {
+                    b.HasOne("Support.Api.Models.User", "Author")
+                        .WithMany("Comments")
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Support.Api.Models.Ticket", "Ticket")
+                        .WithMany("Comments")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Author");
+
+                    b.Navigation("Ticket");
                 });
 
             modelBuilder.Entity("Support.Api.Models.Category", b =>
                 {
                     b.Navigation("Tickets");
+                });
+
+            modelBuilder.Entity("Support.Api.Models.Ticket", b =>
+                {
+                    b.Navigation("Comments");
+                });
+
+            modelBuilder.Entity("Support.Api.Models.User", b =>
+                {
+                    b.Navigation("AssignedTickets");
+
+                    b.Navigation("Comments");
                 });
 #pragma warning restore 612, 618
         }

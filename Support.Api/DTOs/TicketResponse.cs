@@ -9,4 +9,6 @@ public sealed record TicketResponse(
     int CategoryId,
     Priority Priority,
     Status Status,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    int? AssigneeId,
+    DateTimeOffset? ResolvedAt);

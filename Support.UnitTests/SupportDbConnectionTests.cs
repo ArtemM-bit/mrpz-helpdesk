@@ -63,6 +63,65 @@ public sealed class SupportDbConnectionTests
         await Assert.ThrowsAsync<DbUpdateException>(() => dbContext.SaveChangesAsync());
     }
 
+    [Fact]
+    public async Task SupportDatabase_AllowsUnassignedTicketsAndRejectsCommentsWithUnknownReferences()
+    {
+        var connectionString = GetSupportDatabaseConnectionString();
+        var options = new DbContextOptionsBuilder<SupportDbContext>()
+            .UseSqlServer(connectionString)
+            .Options;
+
+        await using var dbContext = new SupportDbContext(options);
+        await dbContext.Database.MigrateAsync();
+
+        var ticket = new Ticket
+        {
+            Id = Guid.NewGuid(),
+            Title = "Заявка без відповідального",
+            Description = "Перевірка nullable-полів",
+            CategoryId = 1,
+            Priority = Priority.Low,
+            Status = Status.New,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        await dbContext.Tickets.AddAsync(ticket);
+        await dbContext.SaveChangesAsync();
+        Assert.Null(ticket.AssigneeId);
+        Assert.Null(ticket.ResolvedAt);
+
+        try
+        {
+            await dbContext.TicketComments.AddAsync(new TicketComment
+            {
+                Id = Guid.NewGuid(),
+                TicketId = Guid.NewGuid(),
+                AuthorId = 1,
+                Text = "Посилання на невідому заявку",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => dbContext.SaveChangesAsync());
+            dbContext.ChangeTracker.Clear();
+
+            await dbContext.TicketComments.AddAsync(new TicketComment
+            {
+                Id = Guid.NewGuid(),
+                TicketId = ticket.Id,
+                AuthorId = int.MaxValue,
+                Text = "Посилання на невідомого автора",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => dbContext.SaveChangesAsync());
+            dbContext.ChangeTracker.Clear();
+        }
+        finally
+        {
+            dbContext.ChangeTracker.Clear();
+            dbContext.Tickets.Remove(ticket);
+            await dbContext.SaveChangesAsync();
+        }
+    }
+
     private static string GetSupportDatabaseConnectionString()
     {
         var configuration = new ConfigurationBuilder()
