@@ -29,6 +29,24 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
         return dbContext.Users.SingleOrDefaultAsync(user => user.Id == id, cancellationToken);
     }
 
+    public async Task AddCommentAsync(TicketComment comment, CancellationToken cancellationToken = default)
+    {
+        await dbContext.TicketComments.AddAsync(comment, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TicketComment>> GetCommentsByTicketIdAsync(
+        Guid ticketId,
+        CancellationToken cancellationToken = default)
+    {
+        return await dbContext.TicketComments
+            .AsNoTracking()
+            .Where(comment => comment.TicketId == ticketId)
+            .OrderBy(comment => comment.CreatedAt)
+            .ThenBy(comment => comment.Id)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         return dbContext.SaveChangesAsync(cancellationToken);

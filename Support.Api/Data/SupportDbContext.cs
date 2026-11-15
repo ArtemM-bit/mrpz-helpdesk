@@ -96,6 +96,7 @@ public sealed class SupportDbContext(DbContextOptions<SupportDbContext> options)
             entity.HasKey(comment => comment.Id);
 
             entity.Property(comment => comment.Text)
+                .HasMaxLength(2000)
                 .IsUnicode()
                 .IsRequired();
 

@@ -12,5 +12,11 @@ public interface ITicketRepository
 
     Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default);
 
+    Task AddCommentAsync(TicketComment comment, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<TicketComment>> GetCommentsByTicketIdAsync(
+        Guid ticketId,
+        CancellationToken cancellationToken = default);
+
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

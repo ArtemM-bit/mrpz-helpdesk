@@ -21,6 +21,8 @@ public sealed class TicketsControllerTests
         var getByIdMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.GetById));
         var assignMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Assign));
         var changeStatusMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.ChangeStatus));
+        var createCommentMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.CreateComment));
+        var getCommentsMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.GetComments));
 
         Assert.Equal("api/tickets", controllerRoute?.Template);
         Assert.NotNull(createMethod);
@@ -31,6 +33,10 @@ public sealed class TicketsControllerTests
         Assert.Equal("{id:guid}/assignee", assignMethod.GetCustomAttribute<HttpPatchAttribute>()?.Template);
         Assert.NotNull(changeStatusMethod);
         Assert.Equal("{id:guid}/status", changeStatusMethod.GetCustomAttribute<HttpPatchAttribute>()?.Template);
+        Assert.NotNull(createCommentMethod);
+        Assert.Equal("{id:guid}/comments", createCommentMethod.GetCustomAttribute<HttpPostAttribute>()?.Template);
+        Assert.NotNull(getCommentsMethod);
+        Assert.Equal("{id:guid}/comments", getCommentsMethod.GetCustomAttribute<HttpGetAttribute>()?.Template);
     }
 
     [Fact]
@@ -41,7 +47,8 @@ public sealed class TicketsControllerTests
             _ => Task.FromResult(new CreateTicketResult(ticket, EmptyErrors()))),
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
-            UnusedStatusService());
+            UnusedStatusService(),
+            UnusedCommentService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -62,7 +69,8 @@ public sealed class TicketsControllerTests
             _ => Task.FromResult(new CreateTicketResult(null, errors))),
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
-            UnusedStatusService());
+            UnusedStatusService(),
+            UnusedCommentService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -79,7 +87,8 @@ public sealed class TicketsControllerTests
             _ => Task.FromException<CreateTicketResult>(new DbUpdateException(privateDatabaseDetails))),
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
-            UnusedStatusService());
+            UnusedStatusService(),
+            UnusedCommentService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -106,7 +115,8 @@ public sealed class TicketsControllerTests
                 CreatedAt = ticket.CreatedAt
             })),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
-            UnusedStatusService());
+            UnusedStatusService(),
+            UnusedCommentService());
 
         var result = await controller.GetById(ticket.Id, CancellationToken.None);
 
@@ -122,7 +132,8 @@ public sealed class TicketsControllerTests
             new StubTicketCreationService(_ => throw new InvalidOperationException()),
             new StubTicketRepository(_ => Task.FromResult<Ticket?>(null)),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
-            UnusedStatusService());
+            UnusedStatusService(),
+            UnusedCommentService());
 
         var result = await controller.GetById(Guid.NewGuid(), CancellationToken.None);
 
@@ -138,13 +149,83 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => Task.FromResult(
                 new TicketAssignmentResult(response, TicketAssignmentError.None))),
-            UnusedStatusService());
+            UnusedStatusService(),
+            UnusedCommentService());
 
         var result = await controller.Assign(response.Id, new AssignTicketRequest(2), CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status200OK, ok.StatusCode);
         Assert.Equal(response, ok.Value);
+    }
+
+    [Fact]
+    public async Task CreateComment_ValidRequest_Returns201WithCommentAndLocation()
+    {
+        var comment = new TicketCommentResponse(Guid.NewGuid(), "Коментар", 1, DateTimeOffset.UtcNow);
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            new StubTicketCommentService((_, _) => Task.FromResult(
+                new TicketCommentResult(comment, TicketCommentError.None))));
+
+        var ticketId = Guid.NewGuid();
+        var result = await controller.CreateComment(ticketId, new CreateCommentRequest(comment.Text), CancellationToken.None);
+
+        var created = Assert.IsType<CreatedResult>(result.Result);
+        Assert.Equal(StatusCodes.Status201Created, created.StatusCode);
+        Assert.Equal($"/api/tickets/{ticketId}/comments", created.Location);
+        Assert.Equal(comment, created.Value);
+    }
+
+    [Theory]
+    [InlineData(TicketCommentError.InvalidText, StatusCodes.Status400BadRequest)]
+    [InlineData(TicketCommentError.TicketNotFound, StatusCodes.Status404NotFound)]
+    [InlineData(TicketCommentError.AuthorNotFound, StatusCodes.Status404NotFound)]
+    [InlineData(TicketCommentError.TicketClosed, StatusCodes.Status409Conflict)]
+    public async Task CreateComment_FailedOperation_ReturnsMappedStatus(
+        TicketCommentError commentError,
+        int expectedStatus)
+    {
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            new StubTicketCommentService((_, _) => Task.FromResult(
+                new TicketCommentResult(null, commentError))));
+
+        var result = await controller.CreateComment(
+            Guid.NewGuid(),
+            new CreateCommentRequest("Коментар"),
+            CancellationToken.None);
+
+        var status = result.Result switch
+        {
+            ObjectResult objectResult => objectResult.StatusCode,
+            StatusCodeResult statusCodeResult => statusCodeResult.StatusCode,
+            _ => null
+        };
+        Assert.Equal(expectedStatus, status);
+    }
+
+    [Fact]
+    public async Task GetComments_NoComments_Returns200WithEmptyList()
+    {
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            UnusedCommentService());
+
+        var result = await controller.GetComments(Guid.NewGuid(), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status200OK, ok.StatusCode);
+        Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<TicketCommentResponse>>(ok.Value));
     }
 
     [Theory]
@@ -160,7 +241,8 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => Task.FromResult(
                 new TicketAssignmentResult(null, assignmentError))),
-            UnusedStatusService());
+            UnusedStatusService(),
+            UnusedCommentService());
 
         var result = await controller.Assign(Guid.NewGuid(), new AssignTicketRequest(2), CancellationToken.None);
 
@@ -182,7 +264,8 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             new StubTicketStatusService((_, _) => Task.FromResult(
-                new TicketStatusResult(response, TicketStatusError.None))));
+                new TicketStatusResult(response, TicketStatusError.None))),
+            UnusedCommentService());
 
         var result = await controller.ChangeStatus(
             response.Id,
@@ -208,7 +291,8 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             new StubTicketStatusService((_, _) => Task.FromResult(
-                new TicketStatusResult(null, statusError))));
+                new TicketStatusResult(null, statusError))),
+            UnusedCommentService());
 
         var result = await controller.ChangeStatus(
             Guid.NewGuid(),
@@ -249,6 +333,9 @@ public sealed class TicketsControllerTests
     private static StubTicketStatusService UnusedStatusService() =>
         new((_, _) => throw new InvalidOperationException());
 
+    private static StubTicketCommentService UnusedCommentService() =>
+        new((_, _) => throw new InvalidOperationException());
+
     private sealed class StubTicketCreationService(
         Func<CreateTicketRequest, Task<CreateTicketResult>> createAsync) : ITicketCreationService
     {
@@ -271,6 +358,14 @@ public sealed class TicketsControllerTests
         public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult<User?>(null);
 
+        public Task AddCommentAsync(TicketComment comment, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task<IReadOnlyList<TicketComment>> GetCommentsByTicketIdAsync(
+            Guid ticketId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<TicketComment>>([]);
+
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
@@ -290,5 +385,14 @@ public sealed class TicketsControllerTests
             Guid ticketId,
             ChangeTicketStatusRequest request,
             CancellationToken cancellationToken = default) => changeStatusAsync(ticketId, request);
+    }
+
+    private sealed class StubTicketCommentService(
+        Func<Guid, CreateCommentRequest, Task<TicketCommentResult>> createAsync) : ITicketCommentService
+    {
+        public Task<TicketCommentResult> CreateAsync(
+            Guid ticketId,
+            CreateCommentRequest request,
+            CancellationToken cancellationToken = default) => createAsync(ticketId, request);
     }
 }

@@ -127,8 +127,9 @@ namespace Support.Api.Migrations
 
                     b.Property<string>("Text")
                         .IsRequired()
+                        .HasMaxLength(2000)
                         .IsUnicode(true)
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<Guid>("TicketId")
                         .HasColumnType("uniqueidentifier");

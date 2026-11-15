@@ -122,6 +122,14 @@ public sealed class TicketAssignmentServiceTests
         public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult<User?>(user?.Id == id ? user : null);
 
+        public Task AddCommentAsync(TicketComment comment, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task<IReadOnlyList<TicketComment>> GetCommentsByTicketIdAsync(
+            Guid ticketId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<TicketComment>>([]);
+
         public Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             SaveCount++;

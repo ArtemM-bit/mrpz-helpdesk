@@ -14,7 +14,8 @@ public sealed class TicketsController(
     ITicketCreationService ticketCreationService,
     ITicketRepository ticketRepository,
     ITicketAssignmentService ticketAssignmentService,
-    ITicketStatusService ticketStatusService) : ControllerBase
+    ITicketStatusService ticketStatusService,
+    ITicketCommentService ticketCommentService) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status201Created)]
@@ -112,5 +113,53 @@ public sealed class TicketsController(
                 statusCode: StatusCodes.Status500InternalServerError,
                 title: "Не вдалося зберегти заявку.");
         }
+    }
+
+    [HttpPost("{id:guid}/comments")]
+    [ProducesResponseType(typeof(TicketCommentResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<TicketCommentResponse>> CreateComment(
+        Guid id,
+        [FromBody] CreateCommentRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await ticketCommentService.CreateAsync(id, request, cancellationToken);
+            return result.Error switch
+            {
+                TicketCommentError.InvalidText => BadRequest(),
+                TicketCommentError.TicketNotFound or TicketCommentError.AuthorNotFound => NotFound(),
+                TicketCommentError.TicketClosed => Conflict(),
+                _ => Created($"/api/tickets/{id}/comments", result.Comment)
+            };
+        }
+        catch (Exception exception) when (exception is DbUpdateException or DbException)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Не вдалося зберегти коментар.");
+        }
+    }
+
+    [HttpGet("{id:guid}/comments")]
+    [ProducesResponseType(typeof(IReadOnlyList<TicketCommentResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<TicketCommentResponse>>> GetComments(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var comments = await ticketRepository.GetCommentsByTicketIdAsync(id, cancellationToken);
+        var response = comments
+            .Select(comment => new TicketCommentResponse(
+                comment.Id,
+                comment.Text,
+                comment.AuthorId,
+                comment.CreatedAt))
+            .ToList();
+
+        return Ok(response);
     }
 }
