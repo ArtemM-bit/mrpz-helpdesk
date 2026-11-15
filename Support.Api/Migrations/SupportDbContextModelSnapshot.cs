@@ -33,11 +33,39 @@ namespace Support.Api.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
+                        .IsUnicode(true)
                         .HasColumnType("nvarchar(100)");
 
                     b.HasKey("Id");
 
                     b.ToTable("Categories");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "обладнання"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "програмне забезпечення"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "мережа"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "доступ до облікового запису"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "інше"
+                        });
                 });
 
             modelBuilder.Entity("Support.Api.Models.Ticket", b =>
@@ -55,6 +83,7 @@ namespace Support.Api.Migrations
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(4000)
+                        .IsUnicode(true)
                         .HasColumnType("nvarchar(4000)");
 
                     b.Property<int>("Priority")
@@ -66,6 +95,7 @@ namespace Support.Api.Migrations
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
+                        .IsUnicode(true)
                         .HasColumnType("nvarchar(200)");
 
                     b.HasKey("Id");

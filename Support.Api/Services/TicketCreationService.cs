@@ -4,7 +4,7 @@ using Support.Api.DTOs;
 namespace Support.Api.Services;
 
 public sealed class TicketCreationService(
-    SupportDbContext dbContext,
+    ITicketRepository ticketRepository,
     CreateTicketRequestValidator validator,
     IClock clock) : ITicketCreationService
 {
@@ -19,8 +19,7 @@ public sealed class TicketCreationService(
         }
 
         var ticket = validation.NormalizedRequest!.ToTicket(clock.UtcNow.ToUniversalTime());
-        dbContext.Tickets.Add(ticket);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await ticketRepository.AddAsync(ticket, cancellationToken);
 
         return new CreateTicketResult(ticket.ToResponse(), new Dictionary<string, string[]>());
     }

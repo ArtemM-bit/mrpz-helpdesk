@@ -17,7 +17,15 @@ public sealed class SupportDbContext(DbContextOptions<SupportDbContext> options)
 
             entity.Property(category => category.Name)
                 .HasMaxLength(100)
+                .IsUnicode()
                 .IsRequired();
+
+            entity.HasData(
+                new Category { Id = 1, Name = "обладнання" },
+                new Category { Id = 2, Name = "програмне забезпечення" },
+                new Category { Id = 3, Name = "мережа" },
+                new Category { Id = 4, Name = "доступ до облікового запису" },
+                new Category { Id = 5, Name = "інше" });
 
             entity.HasMany(category => category.Tickets)
                 .WithOne(ticket => ticket.Category)
@@ -31,10 +39,12 @@ public sealed class SupportDbContext(DbContextOptions<SupportDbContext> options)
 
             entity.Property(ticket => ticket.Title)
                 .HasMaxLength(200)
+                .IsUnicode()
                 .IsRequired();
 
             entity.Property(ticket => ticket.Description)
                 .HasMaxLength(4000)
+                .IsUnicode()
                 .IsRequired();
 
             entity.Property(ticket => ticket.CategoryId)

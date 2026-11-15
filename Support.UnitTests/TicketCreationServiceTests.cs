@@ -54,7 +54,7 @@ public sealed class TicketCreationServiceTests
     private static ITicketCreationService CreateService(SupportDbContext context, DateTimeOffset createdAt)
     {
         var validator = new CreateTicketRequestValidator(context);
-        return new TicketCreationService(context, validator, new FixedClock(createdAt));
+        return new TicketCreationService(new TicketRepository(context), validator, new FixedClock(createdAt));
     }
 
     private static CreateTicketRequest ValidRequest() => new()
@@ -71,8 +71,7 @@ public sealed class TicketCreationServiceTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         var context = new SupportDbContext(options);
-        await context.Categories.AddAsync(new Category { Id = 1, Name = "General" });
-        await context.SaveChangesAsync();
+        await context.Database.EnsureCreatedAsync();
         return context;
     }
 

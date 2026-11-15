@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Support.Api.Data;
 
 namespace Support.Api.Services;
 
@@ -10,6 +11,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
         services.AddScoped<IStatusService, StatusService>();
+        services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<CreateTicketRequestValidator>();
         services.AddScoped<ITicketCreationService, TicketCreationService>();
 

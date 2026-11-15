@@ -2,6 +2,7 @@ using System.Data.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Support.Api.Data;
 using Support.Api.DTOs;
 using Support.Api.Services;
 
@@ -9,7 +10,9 @@ namespace Support.Api.Controllers;
 
 [ApiController]
 [Route("api/tickets")]
-public sealed class TicketsController(ITicketCreationService ticketCreationService) : ControllerBase
+public sealed class TicketsController(
+    ITicketCreationService ticketCreationService,
+    ITicketRepository ticketRepository) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Create(
@@ -33,5 +36,14 @@ public sealed class TicketsController(ITicketCreationService ticketCreationServi
                 statusCode: StatusCodes.Status500InternalServerError,
                 title: "Не вдалося зберегти заявку.");
         }
+
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<TicketResponse>> GetById(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var ticket = await ticketRepository.GetByIdAsync(id, cancellationToken);
+        return ticket is null ? NotFound() : Ok(ticket.ToResponse());
+    }
     }
 }

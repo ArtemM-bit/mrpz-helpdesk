@@ -154,8 +154,7 @@ public sealed class CreateTicketRequestValidatorTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         var context = new SupportDbContext(options);
-        await context.Categories.AddAsync(new Category { Id = 1, Name = "General" });
-        await context.SaveChangesAsync();
+        await context.Database.EnsureCreatedAsync();
         return context;
     }
 }

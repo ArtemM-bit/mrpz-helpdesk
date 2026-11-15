@@ -85,6 +85,45 @@ public sealed class TicketContractsTests
     }
 
     [Fact]
+    public void SupportDbContext_UsesUnicodeColumnsForText()
+    {
+        var options = new DbContextOptionsBuilder<SupportDbContext>()
+            .UseSqlServer("Server=(local);Database=SupportDb;Trusted_Connection=True;")
+            .Options;
+
+        using var context = new SupportDbContext(options);
+        var categoryName = context.Model.FindEntityType(typeof(Category))!
+            .FindProperty(nameof(Category.Name))!;
+        var ticketTitle = context.Model.FindEntityType(typeof(Ticket))!
+            .FindProperty(nameof(Ticket.Title))!;
+        var ticketDescription = context.Model.FindEntityType(typeof(Ticket))!
+            .FindProperty(nameof(Ticket.Description))!;
+
+        Assert.Equal("nvarchar(100)", categoryName.GetColumnType());
+        Assert.Equal("nvarchar(200)", ticketTitle.GetColumnType());
+        Assert.Equal("nvarchar(4000)", ticketDescription.GetColumnType());
+    }
+
+    [Fact]
+    public async Task SupportDbContext_SeedsExpectedCategories()
+    {
+        var options = new DbContextOptionsBuilder<SupportDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new SupportDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var names = await context.Categories
+            .OrderBy(category => category.Id)
+            .Select(category => category.Name)
+            .ToArrayAsync();
+
+        Assert.Equal(
+            ["обладнання", "програмне забезпечення", "мережа", "доступ до облікового запису", "інше"],
+            names);
+    }
+
+    [Fact]
     public void Enums_ContainExpectedValues()
     {
         Assert.Equal([Priority.Low, Priority.Medium, Priority.High, Priority.Critical], Enum.GetValues<Priority>());

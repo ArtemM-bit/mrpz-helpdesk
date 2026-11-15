@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Support.Api.Controllers;
+using Support.Api.Data;
 using Support.Api.DTOs;
 using Support.Api.Models;
 using Support.Api.Services;
@@ -17,10 +18,13 @@ public sealed class TicketsControllerTests
     {
         var controllerRoute = typeof(TicketsController).GetCustomAttribute<RouteAttribute>();
         var createMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Create));
+        var getByIdMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.GetById));
 
         Assert.Equal("api/tickets", controllerRoute?.Template);
         Assert.NotNull(createMethod);
         Assert.NotNull(createMethod.GetCustomAttribute<HttpPostAttribute>());
+        Assert.NotNull(getByIdMethod);
+        Assert.Equal("{id:guid}", getByIdMethod.GetCustomAttribute<HttpGetAttribute>()?.Template);
     }
 
     [Fact]
@@ -28,7 +32,8 @@ public sealed class TicketsControllerTests
     {
         var ticket = CreateResponse();
         var controller = new TicketsController(new StubTicketCreationService(
-            _ => Task.FromResult(new CreateTicketResult(ticket, EmptyErrors()))));
+            _ => Task.FromResult(new CreateTicketResult(ticket, EmptyErrors()))),
+            new StubTicketRepository());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -46,7 +51,8 @@ public sealed class TicketsControllerTests
             [nameof(CreateTicketRequest.Title)] = ["Title is required."]
         };
         var controller = new TicketsController(new StubTicketCreationService(
-            _ => Task.FromResult(new CreateTicketResult(null, errors))));
+            _ => Task.FromResult(new CreateTicketResult(null, errors))),
+            new StubTicketRepository());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -60,7 +66,8 @@ public sealed class TicketsControllerTests
     {
         const string privateDatabaseDetails = "private database connection details";
         var controller = new TicketsController(new StubTicketCreationService(
-            _ => Task.FromException<CreateTicketResult>(new DbUpdateException(privateDatabaseDetails))));
+            _ => Task.FromException<CreateTicketResult>(new DbUpdateException(privateDatabaseDetails))),
+            new StubTicketRepository());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -68,6 +75,42 @@ public sealed class TicketsControllerTests
         Assert.Equal(StatusCodes.Status500InternalServerError, error.StatusCode);
         Assert.NotEqual(StatusCodes.Status201Created, error.StatusCode);
         Assert.DoesNotContain(privateDatabaseDetails, JsonSerializer.Serialize(error.Value));
+    }
+
+    [Fact]
+    public async Task GetById_ExistingTicket_Returns200WithTicketResponse()
+    {
+        var ticket = CreateResponse();
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(_ => Task.FromResult<Ticket?>(new Ticket
+            {
+                Id = ticket.Id,
+                Title = ticket.Title,
+                Description = ticket.Description,
+                CategoryId = ticket.CategoryId,
+                Priority = ticket.Priority,
+                Status = ticket.Status,
+                CreatedAt = ticket.CreatedAt
+            })));
+
+        var result = await controller.GetById(ticket.Id, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<TicketResponse>(ok.Value);
+        Assert.Equal(ticket, response);
+    }
+
+    [Fact]
+    public async Task GetById_MissingTicket_Returns404()
+    {
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(_ => Task.FromResult<Ticket?>(null)));
+
+        var result = await controller.GetById(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result.Result);
     }
 
     private static CreateTicketRequest ValidRequest() => new()
@@ -96,5 +139,14 @@ public sealed class TicketsControllerTests
         public Task<CreateTicketResult> CreateAsync(
             CreateTicketRequest request,
             CancellationToken cancellationToken = default) => createAsync(request);
+    }
+
+    private sealed class StubTicketRepository(
+        Func<Guid, Task<Ticket?>>? getByIdAsync = null) : ITicketRepository
+    {
+        public Task AddAsync(Ticket ticket, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<Ticket?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+            getByIdAsync?.Invoke(id) ?? Task.FromResult<Ticket?>(null);
     }
 }
