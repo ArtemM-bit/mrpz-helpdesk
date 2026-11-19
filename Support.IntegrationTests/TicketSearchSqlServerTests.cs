@@ -27,14 +27,15 @@ public sealed class TicketSearchSqlServerTests
         await using var database = await SqlServerTestDatabase.CreateAsync();
         var cases = new[]
         {
-            (Upper: "І", Lower: "і"),
-            (Upper: "Є", Lower: "є"),
-            (Upper: "Ї", Lower: "ї")
+            (Upper: "ІКС", Lower: "ікс"),
+            (Upper: "ЄКС", Lower: "єкс"),
+            (Upper: "ЇКС", Lower: "їкс"),
+            (Upper: "ҐКС", Lower: "ґкс")
         };
         var tickets = cases.SelectMany((pair, index) => new[]
         {
-            CreateTicket($"{pair.Upper}нцидент {index}", Id(index * 2 + 1)),
-            CreateTicket($"{pair.Lower}сторія {index}", Id(index * 2 + 2))
+            CreateTicket($"{pair.Upper} token {index}", Id(index * 2 + 1)),
+            CreateTicket($"{pair.Lower} token {index}", Id(index * 2 + 2))
         }).ToArray();
         database.Context.Tickets.AddRange(tickets);
         await database.Context.SaveChangesAsync();
@@ -56,24 +57,63 @@ public sealed class TicketSearchSqlServerTests
     public async Task SearchAsync_CombinesStatusPriorityAndCategoryFilters()
     {
         await using var database = await SqlServerTestDatabase.CreateAsync();
-        var expected = CreateTicket("TDD цільова заявка", Id(1), Status.New, Priority.High, 1, assigneeId: 2);
+        var expected = CreateTicket("ґАНОК цільова заявка", Id(1), Status.New, Priority.High, 1, assigneeId: 2);
         database.Context.Tickets.AddRange(
             expected,
-            CreateTicket("TDD інший статус", Id(2), Status.Closed, Priority.High, 1, assigneeId: 2),
-            CreateTicket("TDD інший пріоритет", Id(3), Status.New, Priority.Low, 1, assigneeId: 2),
-            CreateTicket("TDD інша категорія", Id(4), Status.New, Priority.High, 2, assigneeId: 2),
-            CreateTicket("TDD інший відповідальний", Id(5), Status.New, Priority.High, 1, assigneeId: 1));
+            CreateTicket("ґанок інший статус", Id(2), Status.Closed, Priority.High, 1, assigneeId: 2),
+            CreateTicket("ґанок інший пріоритет", Id(3), Status.New, Priority.Low, 1, assigneeId: 2),
+            CreateTicket("ґанок інша категорія", Id(4), Status.New, Priority.High, 2, assigneeId: 2),
+            CreateTicket("ґанок інший відповідальний", Id(5), Status.New, Priority.High, 1, assigneeId: 1));
         await database.Context.SaveChangesAsync();
 
-        var results = await new TicketRepository(database.Context).SearchAsync(new TicketSearchRequest(
-            Search: "TDD",
+        var repository = new TicketRepository(database.Context);
+        var upperCaseSearch = await repository.SearchAsync(new TicketSearchRequest(
+            Search: "ҐАНОК",
+            CategoryId: 1,
+            Priority: Priority.High,
+            Status: Status.New,
+            AssigneeId: 2,
+            SortDirection: "asc"));
+        var lowerCaseSearch = await repository.SearchAsync(new TicketSearchRequest(
+            Search: "ґанок",
             CategoryId: 1,
             Priority: Priority.High,
             Status: Status.New,
             AssigneeId: 2,
             SortDirection: "asc"));
 
-        Assert.Equal([expected.Id], results.Select(ticket => ticket.Id));
+        Assert.Equal([expected.Id], upperCaseSearch.Select(ticket => ticket.Id));
+        Assert.Equal([expected.Id], lowerCaseSearch.Select(ticket => ticket.Id));
+    }
+
+    [Fact]
+    public async Task SearchAsync_TreatsLikeSpecialCharactersLiterallyAndReturnsNoResultsForUnknownIds()
+    {
+        await using var database = await SqlServerTestDatabase.CreateAsync();
+        var literalPercent = CreateTicket("Upload 100% done", Id(1));
+        var wildcardPercent = CreateTicket("Upload 100x done", Id(2));
+        var literalUnderscore = CreateTicket("test_1", Id(3));
+        var wildcardUnderscore = CreateTicket("testA1", Id(4));
+        var literalBracket = CreateTicket("test[1]", Id(5));
+        var wildcardBracket = CreateTicket("test1", Id(6));
+        var assignedTicket = CreateTicket("Assigned", Id(7), assigneeId: 1);
+        database.Context.Tickets.AddRange(
+            literalPercent, wildcardPercent, literalUnderscore, wildcardUnderscore,
+            literalBracket, wildcardBracket, assignedTicket);
+        await database.Context.SaveChangesAsync();
+
+        var repository = new TicketRepository(database.Context);
+        var percentResults = await repository.SearchAsync(new TicketSearchRequest(Search: "100%"));
+        var underscoreResults = await repository.SearchAsync(new TicketSearchRequest(Search: "test_1"));
+        var bracketResults = await repository.SearchAsync(new TicketSearchRequest(Search: "test[1]"));
+        var unknownCategory = await repository.SearchAsync(new TicketSearchRequest(CategoryId: 9999));
+        var unknownAssignee = await repository.SearchAsync(new TicketSearchRequest(AssigneeId: 9999));
+
+        Assert.Equal([literalPercent.Id], percentResults.Select(ticket => ticket.Id));
+        Assert.Equal([literalUnderscore.Id], underscoreResults.Select(ticket => ticket.Id));
+        Assert.Equal([literalBracket.Id], bracketResults.Select(ticket => ticket.Id));
+        Assert.Empty(unknownCategory);
+        Assert.Empty(unknownAssignee);
     }
 
     private static Ticket CreateTicket(

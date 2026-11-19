@@ -54,7 +54,7 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
         var searchText = search.Search?.Trim();
         if (!string.IsNullOrEmpty(searchText))
         {
-            var normalizedSearchText = searchText.ToLowerInvariant();
+            var normalizedSearchText = searchText.ToLower();
             query = query.Where(ticket =>
                 ticket.Title.ToLower().Contains(normalizedSearchText)
                 || ticket.Description.ToLower().Contains(normalizedSearchText));

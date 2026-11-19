@@ -4,7 +4,7 @@ using Support.Api.Models;
 namespace Support.Api.DTOs;
 
 /// <summary>Необов'язкові query-фільтри для пошуку заявок.</summary>
-/// <param name="Search">Необов'язковий текст для пошуку без урахування регістру в Title або Description; зовнішні пробіли обрізаються, пробільний запит ігнорується.</param>
+/// <param name="Search">Необов'язковий текст для пошуку без урахування регістру в Title або Description; зовнішні пробіли обрізаються, пробільний запит ігнорується, спецсимволи SQL LIKE шукаються буквально.</param>
 /// <param name="CategoryId">Необов'язковий додатний ID категорії; початкові категорії мають ID 1–5.</param>
 /// <param name="Priority">Необов'язковий визначений цілий код пріоритету: 0 Low, 1 Medium, 2 High або 3 Critical.</param>
 /// <param name="Status">Необов'язковий визначений цілий код статусу: 0 New, 1 InProgress, 2 Resolved або 3 Closed.</param>

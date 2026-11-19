@@ -121,6 +121,10 @@ public sealed class TicketAssignmentServiceTests
         public Task<Ticket?> GetForAssignmentAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult<Ticket?>(ticket.Id == id ? ticket : null);
 
+        public Task<IReadOnlyList<Ticket>> SearchAsync(
+            TicketSearchRequest search,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Ticket>>([]);
+
         public Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
             CancellationToken cancellationToken = default) => throw new NotImplementedException();
 

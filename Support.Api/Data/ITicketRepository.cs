@@ -13,10 +13,7 @@ public interface ITicketRepository
 
     Task<IReadOnlyList<Ticket>> SearchAsync(
         TicketSearchRequest search,
-        CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<IReadOnlyList<Ticket>>([]);
-    }
+        CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
         CancellationToken cancellationToken = default);
