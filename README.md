@@ -1,402 +1,184 @@
 # Support Helpdesk API
 
-REST API для реєстрації та читання заявок служби підтримки. Проєкти використовують .NET 10 і SQL Server.
+REST API служби підтримки на .NET 10 і SQL Server. Через API можна створити заявку, призначити виконавця, змінити статус і переглянути коментарі.
 
-## Підготовка сервера та бази даних
+## Локальний запуск
 
-Спочатку виконайте **Configuration Task**: підготуйте сервер SQL Server і створіть порожню базу `SupportDb`. Рядок підключення має бути доступним застосунку через `ConnectionStrings:SupportDatabase`. Деталі конфігурації та застосування міграцій також наведені в [docs/Database.md](docs/Database.md).
+Для запуску потрібні .NET 10 SDK і доступ до SQL Server.
 
-З кореня репозиторію в PowerShell задайте рядок підключення. Нижче наведено приклад для локального SQL Server Express; для іншого сервера змініть значення відповідно до Configuration Task:
+1. Підготуйте порожню базу `SupportDb` у SQL Server.
+2. У PowerShell відкрийте корінь репозиторію та задайте рядок підключення. Приклад для локального SQL Server Express з автентифікацією Windows.
 
-```powershell
-$env:ConnectionStrings__SupportDatabase = "Server=(local)\SQLEXPRESS;Database=SupportDb;Integrated Security=True;TrustServerCertificate=True;"
-```
+   ```powershell
+   $env:ConnectionStrings__SupportDatabase = "Server=(local)\SQLEXPRESS;Database=SupportDb;Integrated Security=True;TrustServerCertificate=True;"
+   ```
 
-`ConnectionStrings__SupportDatabase` — формат змінної середовища для ключа конфігурації `ConnectionStrings:SupportDatabase`. Не зберігайте реальні секрети в репозиторії.
+3. У тому самому вікні відновіть залежності та запустіть API в профілі `http`.
 
-## Відновлення, міграції та запуск
+   ```powershell
+   dotnet restore Support.slnx
+   dotnet run --project Support.Api --launch-profile http
+   ```
 
-Потрібні .NET 10 SDK і доступ до налаштованого SQL Server. Для застосування міграцій потрібен інструмент EF Core CLI 10.0.13 (якщо він ще не встановлений):
+Під час запуску API застосує міграції та додасть початкові категорії й користувачів. Якщо потрібно застосувати міграції окремо, встановіть EF Core CLI командою `dotnet tool install --global dotnet-ef --version 10.0.13` і скористайтеся [інструкцією для бази даних](docs/Database.md).
 
-```powershell
-dotnet tool install --global dotnet-ef --version 10.0.13
-```
+Базова адреса API — `http://localhost:5132`. У профілі `http` також доступна [специфікація OpenAPI](http://localhost:5132/openapi/v1.json).
 
-Відновіть залежності та застосуйте міграції до готової порожньої бази `SupportDb`:
+## Маршрути API
 
-```powershell
-dotnet restore Support.slnx
-dotnet ef database update --project Support.Api --startup-project Support.Api
-```
+У маршрутах нижче `{id}` — UUID заявки, який повертає `POST /api/tickets`. Для запитів із JSON вкажіть заголовок `Content-Type: application/json`.
 
-API також запускає `Database.MigrateAsync()` під час старту, але явна команда вище дає змогу застосувати міграції окремо й перевірити підключення.
+### `POST /api/tickets`
 
-Запустіть API:
+Створює заявку зі статусом `0` (`New`). Сервер генерує `id` і `createdAt`.
 
-```powershell
-dotnet run --project Support.Api
-```
-
-Профіль `http` доступний за адресою `http://localhost:5132`. У середовищі Development OpenAPI-документ доступний за адресою `http://localhost:5132/openapi/v1.json`.
-
-## Тести
-
-З кореня репозиторію запустіть усі тести:
-
-```powershell
-dotnet test Support.slnx
-```
-
-## Реєстрація та читання заявки
-
-`POST /api/tickets` приймає JSON з такими полями:
-
-| Поле | Тип JSON | Обов'язкове | Обмеження |
+| Поле | Тип JSON | Обов’язкове | Правило |
 | --- | --- | --- | --- |
-| `title` | string | так | 1–150 символів після обрізання пробілів по краях |
-| `description` | string | так | 1–4000 символів після обрізання пробілів по краях |
-| `categoryId` | integer | так | ID наявної категорії; початкові категорії мають ID від 1 до 5 |
-| `priority` | integer | ні | `0` = `Low`, `1` = `Medium`, `2` = `High`, `3` = `Critical`; за замовчуванням `0` (`Low`) |
+| `title` | Рядок | Так | Від 1 до 150 символів. |
+| `description` | Рядок | Так | Від 1 до 4000 символів. |
+| `categoryId` | Ціле число | Так | ID наявної категорії. Початкові ID — від `1` до `5`. |
+| `priority` | Ціле число | Ні | `0` (`Low`, за замовчуванням), `1` (`Medium`), `2` (`High`), `3` (`Critical`). |
 
-Приклад запиту (пріоритет `High`):
+API перевіряє максимальну довжину `title` і `description` до обрізання пробілів. Перед збереженням обрізає пробіли по краях і перевіряє, що поля залишилися непорожніми.
 
-```json
+**Приклад запиту**
+
+```http
+POST /api/tickets
+Content-Type: application/json
+
 {
   "title": "Не працює принтер",
-  "description": "Принтер не друкує документи після заміни картриджа.",
+  "description": "Принтер не друкує після заміни картриджа.",
   "categoryId": 1,
   "priority": 2
 }
 ```
 
-Успішна реєстрація повертає `201 Created`, заголовок `Location` з URL заявки та JSON-відповідь. `id` і `createdAt` генерує система, а `status` встановлюється в `0` (`New`):
+**Відповіді**
 
-```http
-HTTP/1.1 201 Created
-Location: /api/tickets/6f9619ff-8b86-d011-b42d-00cf4fc964ff
-Content-Type: application/json
-```
+| Код | Значення |
+| --- | --- |
+| `201 Created` | Заявку створено. Заголовок `Location` містить `/api/tickets/{id}`, а тіло — створену заявку. |
+| `400 Bad Request` | Запит або значення поля некоректні. |
+| `500 Internal Server Error` | Сталася помилка під час роботи з базою даних. |
+
+**Приклад тіла відповіді `201`**
 
 ```json
 {
   "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
   "title": "Не працює принтер",
-  "description": "Принтер не друкує документи після заміни картриджа.",
+  "description": "Принтер не друкує після заміни картриджа.",
   "categoryId": 1,
   "priority": 2,
   "status": 0,
-  "createdAt": "2026-01-15T10:30:00+00:00"
+  "createdAt": "2026-11-18T10:30:00+00:00",
+  "assigneeId": null,
+  "resolvedAt": null
 }
 ```
 
-Читання за повернутим ID через `GET /api/tickets/{id}` повертає `200 OK` і ту саму заявку:
+Помилки, які виявив сервіс, повертаються як об’єкт із повідомленнями за полями. Наприклад, для невідомої категорії відповідь `400` містить `{"CategoryId":["Вказано невідому категорію."]}`. Помилки, які ASP.NET Core виявив ще до виклику сервісу, повертаються у форматі `ValidationProblemDetails` із полем `errors`.
+
+### `GET /api/tickets/{id}`
+
+Повертає збережену заявку за ID. Тіло запиту не потрібне.
 
 ```http
 GET /api/tickets/6f9619ff-8b86-d011-b42d-00cf4fc964ff
 ```
 
-Якщо вхідні поля або категорія не проходять бізнес-валідацію, `POST` повертає `400 Bad Request` — об'єкт із масивами повідомлень для полів. Наприклад, для невідомого `categoryId`:
+- `200 OK` — знайдена заявка у тому самому форматі, що й відповідь на `POST /api/tickets`.
+- `404 Not Found` — заявки з таким ID немає.
+
+### `PATCH /api/tickets/{id}/assignee`
+
+Призначає або замінює виконавця. У полі `assigneeId` передайте цілий ID працівника підтримки. Початковий працівник підтримки має ID `2`.
+
+```http
+PATCH /api/tickets/6f9619ff-8b86-d011-b42d-00cf4fc964ff/assignee
+Content-Type: application/json
+
+{"assigneeId": 2}
+```
+
+- `200 OK` — оновлена заявка з новим `assigneeId`.
+- `400 Bad Request` — користувача з таким ID немає або він не є працівником підтримки.
+- `404 Not Found` — заявку не знайдено.
+- `409 Conflict` — заявку закрито.
+
+### `PATCH /api/tickets/{id}/status`
+
+Змінює статус заявки. У полі `status` передайте числовий код наступного статусу.
+
+| Поточний статус | Наступний статус | Умова або результат |
+| --- | --- | --- |
+| `0` (`New`) | `1` (`InProgress`) | Заявці вже призначено виконавця. |
+| `1` (`InProgress`) | `2` (`Resolved`) | Сервер записує поточний час UTC у `resolvedAt`. |
+| `2` (`Resolved`) | `3` (`Closed`) | Значення `resolvedAt` зберігається. |
+
+```http
+PATCH /api/tickets/6f9619ff-8b86-d011-b42d-00cf4fc964ff/status
+Content-Type: application/json
+
+{"status": 1}
+```
+
+- `200 OK` — оновлена заявка.
+- `400 Bad Request` — невідомий код статусу.
+- `404 Not Found` — заявку не знайдено.
+- `409 Conflict` — перехід заборонено або для переходу в `InProgress` бракує виконавця. Повторне встановлення поточного статусу також повертає `409`.
+
+### `POST /api/tickets/{id}/comments`
+
+Додає коментар до заявки, яка ще не має статусу `Closed`. Поле `text` має містити від 1 до 2000 символів після обрізання пробілів.
+
+**Для локального запуску.** API визначає автора за `NameIdentifier` поточного користувача. У проєкті ще не налаштовано автентифікацію, тому в стандартному профілі цей запит повертає `404`. Коли застосунок отримує `NameIdentifier`, він має містити ID наявного користувача. У тілі запиту достатньо передати `text`.
+
+```http
+POST /api/tickets/6f9619ff-8b86-d011-b42d-00cf4fc964ff/comments
+Content-Type: application/json
+
+{"text": "Після перезапуску принтер працює."}
+```
+
+- `201 Created` — створений коментар з полями `id`, `text`, `authorId` і `createdAt`. `Location` містить адресу списку коментарів цієї заявки.
+- `400 Bad Request` — текст порожній або задовгий.
+- `404 Not Found` — заявку не знайдено або API не вдалося визначити автора.
+- `409 Conflict` — заявку закрито.
+
+### `GET /api/tickets/{id}/comments`
+
+Повертає коментарі заявки від найстарішого до найновішого. Коментарі з однаковим часом створення впорядковуються за `id`.
+
+```http
+GET /api/tickets/6f9619ff-8b86-d011-b42d-00cf4fc964ff/comments
+```
+
+`200 OK` містить масив коментарів. Якщо заявки або коментарів немає, відповідь містить `[]`.
+
+### `GET /api/status`
+
+Повертає `200 OK` з назвою застосунку, середовищем і поточним часом UTC. Цей маршрут не перевіряє підключення до бази даних.
 
 ```json
 {
-  "CategoryId": [
-	"Вказано невідому категорію."
-  ]
+  "name": "Support.Api",
+  "environment": "Development",
+  "checkedAtUtc": "2026-11-18T10:30:00+00:00"
 }
 ```
 
-Для неіснуючого коректного UUID `GET` повертає `404 Not Found` без тіла:
+## Як перевірити роботу
 
-```http
-HTTP/1.1 404 Not Found
-```
+1. Створіть заявку через `POST /api/tickets` і збережіть `id` з відповіді.
+2. Призначте виконавця `2` через `PATCH /api/tickets/{id}/assignee`.
+3. Через `PATCH /api/tickets/{id}/status` послідовно встановіть `1`, `2` і `3`. Переконайтеся, що `resolvedAt` з’являється після статусу `2` і залишається тим самим після статусу `3`.
+4. Перезапустіть API та виконайте `GET /api/tickets/{id}` з тим самим `id`. У відповіді мають бути збережений статус `3` і той самий виконавець.
 
-## Пошук заявок і статистика категорій
-
-### `GET /api/tickets`
-
-Усі query-параметри пошуку необов'язкові. Різні фільтри комбінуються через **AND**. `search` шукає без урахування регістру в `Title` **або** `Description` (OR); пробіли на початку/в кінці обрізаються, а порожній чи пробільний запит ігнорується.
-
-| Параметр | Тип | Допустимі значення | Типова поведінка |
-| --- | --- | --- | --- |
-| `search` | string | Будь-який текст; порожнє або пробільне значення не додає фільтр | Без параметра текст не фільтрується. Пошук виконується в заголовку або описі. |
-| `categoryId` | integer | Додатний ID категорії; початкові категорії мають ID `1`–`5` | Без параметра категорія не фільтрується. Невідомий додатний ID дасть `[]`, а не `400`. |
-| `priority` | integer | `0` = `Low`, `1` = `Medium`, `2` = `High`, `3` = `Critical` | Без параметра пріоритет не фільтрується. |
-| `status` | integer | `0` = `New`, `1` = `InProgress`, `2` = `Resolved`, `3` = `Closed` | Без параметра статус не фільтрується. |
-| `assigneeId` | integer | Додатний ID відповідального працівника | Без параметра відповідальний не фільтрується. Невідомий додатний ID дасть `[]`, а не `400`. |
-| `sortDirection` | string | `asc` або `desc`, регістр і зовнішні пробіли не мають значення | `desc`: `CreatedAt` за спаданням. За однакової дати `Id` сортується за зростанням. `asc` змінює напрямок дати на зростання; порядок за `Id` лишається за зростанням. |
-
-`categoryId` і `assigneeId` мають бути більшими за 0. Невизначений числовий код `status` чи `priority`, некоректний тип/значення параметра або `sortDirection`, відмінний від `asc` і `desc`, повертає `400 Bad Request` з описом помилки. Відсутність збігів — це успішна відповідь `200 OK` з порожнім масивом.
-
-У початкових seed-даних є категорії з ID `1`–`5` та користувачі, але **немає заявок**. Наведені нижче записи заявок — приклади форми відповіді для даних, створених клієнтом; ID категорій і їхні назви відповідають seed-даним.
-
-**Текстовий пошук** — шукає слово в заголовку або описі:
-
-```http
-GET /api/tickets?search=принтер
-```
-
-```json
-[
-  {
-    "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
-    "title": "Не працює принтер",
-    "description": "Принтер не друкує документи після заміни картриджа.",
-    "categoryId": 1,
-    "priority": 2,
-    "status": 0,
-    "createdAt": "2026-01-15T10:30:00+00:00",
-    "assigneeId": null,
-    "resolvedAt": null
-  }
-]
-```
-
-**Комбінований фільтр** — заявка має одночасно відповідати категорії та статусу:
-
-```http
-GET /api/tickets?categoryId=1&status=0
-```
-
-Відповідь містить лише заявки категорії «обладнання» (`categoryId: 1`) зі статусом `New` (`status: 0`); у прикладі це та сама заявка принтера вище:
-
-```json
-[
-  {
-    "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
-    "title": "Не працює принтер",
-    "description": "Принтер не друкує документи після заміни картриджа.",
-    "categoryId": 1,
-    "priority": 2,
-    "status": 0,
-    "createdAt": "2026-01-15T10:30:00+00:00",
-    "assigneeId": null,
-    "resolvedAt": null
-  }
-]
-```
-
-**Відповідальний.** `assigneeId` фільтрує заявки за додатним ID працівника. Відповідь `TicketResponse` також містить поле `assigneeId`: цілий ID призначеного працівника або `null`, якщо відповідального не призначено. Наприклад, після `PATCH /api/tickets/{id}/assignee` з `{"assigneeId":2}` пошук може повернути:
-
-```http
-GET /api/tickets?categoryId=1&assigneeId=2
-```
-
-```json
-[
-  {
-    "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
-    "title": "Не працює принтер",
-    "description": "Принтер не друкує документи після заміни картриджа.",
-    "categoryId": 1,
-    "priority": 2,
-    "status": 1,
-    "createdAt": "2026-01-15T10:30:00+00:00",
-    "assigneeId": 2,
-    "resolvedAt": null
-  }
-]
-```
-
-**Сортування.** Для вибірки з двох заявок `asc` повертає старішу першою:
-
-```http
-GET /api/tickets?sortDirection=asc
-```
-
-```json
-[
-  {
-    "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
-    "title": "Не працює принтер",
-    "description": "Принтер не друкує документи після заміни картриджа.",
-    "categoryId": 1,
-    "priority": 2,
-    "status": 0,
-    "createdAt": "2026-01-15T10:30:00+00:00",
-    "assigneeId": null,
-    "resolvedAt": null
-  },
-  {
-    "id": "7f9619ff-8b86-d011-b42d-00cf4fc964ff",
-    "title": "Не відкривається пошта",
-    "description": "Не вдається відкрити робочу пошту.",
-    "categoryId": 2,
-    "priority": 1,
-    "status": 0,
-    "createdAt": "2026-01-16T10:30:00+00:00",
-    "assigneeId": null,
-    "resolvedAt": null
-  }
-]
-```
-
-Для `desc` те саме сортування за датою віддає записи у зворотному порядку:
-
-```http
-GET /api/tickets?sortDirection=desc
-```
-
-```json
-[
-  {
-    "id": "7f9619ff-8b86-d011-b42d-00cf4fc964ff",
-    "title": "Не відкривається пошта",
-    "description": "Не вдається відкрити робочу пошту.",
-    "categoryId": 2,
-    "priority": 1,
-    "status": 0,
-    "createdAt": "2026-01-16T10:30:00+00:00",
-    "assigneeId": null,
-    "resolvedAt": null
-  },
-  {
-    "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
-    "title": "Не працює принтер",
-    "description": "Принтер не друкує документи після заміни картриджа.",
-    "categoryId": 1,
-    "priority": 2,
-    "status": 0,
-    "createdAt": "2026-01-15T10:30:00+00:00",
-    "assigneeId": null,
-    "resolvedAt": null
-  }
-]
-```
-
-**Порожній результат** (наприклад, текст не зустрічається в жодному заголовку чи описі):
-
-```http
-GET /api/tickets?search=невідомий-текст-123
-```
-
-```json
-[]
-```
-
-### `GET /api/statistics/categories`
-
-Маршрут не приймає фільтрів. `200 OK` повертає масив усіх категорій за зростанням `categoryId`. Відповідні поля DTO `CategoryStatisticsResponse` у JSON: `categoryId` (`integer`, ID), `categoryName` (`string`, назва) і `ticketCount` (`integer`, кількість заявок). `ticketCount` охоплює всі збережені заявки незалежно від статусу чи фільтрів `GET /api/tickets`. Категорії без заявок включаються з `ticketCount: 0`.
-
-```http
-GET /api/statistics/categories
-```
-
-```json
-[
-  { "categoryId": 1, "categoryName": "обладнання", "ticketCount": 2 },
-  { "categoryId": 2, "categoryName": "програмне забезпечення", "ticketCount": 1 },
-  { "categoryId": 3, "categoryName": "мережа", "ticketCount": 1 },
-  { "categoryId": 4, "categoryName": "доступ до облікового запису", "ticketCount": 0 },
-  { "categoryId": 5, "categoryName": "інше", "ticketCount": 0 }
-]
-```
-
-У прикладі чотири заявки сумарно враховані; категорії 4 і 5 повернуто з нульовим лічильником. Застосування параметрів `search`, `categoryId`, `priority`, `status`, `assigneeId` чи `sortDirection` до пошуку заявок не змінює цей агрегат.
-
-## Повний сценарій опрацювання заявки
-
-Усі статуси передаються як числа: `0` = `New`, `1` = `InProgress`, `2` = `Resolved`, `3` = `Closed`. Дозволені лише переходи `New → InProgress → Resolved → Closed`. Для початку роботи заявці потрібно призначити працівника підтримки. Під час переходу в `Resolved` API встановлює `resolvedAt` поточним часом UTC; при переході в `Closed` значення зберігається. З `Closed` не можна перейти до іншого статусу, змінити відповідального чи додати коментар.
-
-Для призначення у прикладі використано ID `2` — початкового працівника підтримки. Створення коментаря потребує поточного користувача, ID якого API читає з claim `ClaimTypes.NameIdentifier`. Перед виконанням цього кроку середовище має надати користувача з коректним claim, що відповідає наявному ID користувача (у прикладі — `1`). У цьому проєкті зараз не налаштовано механізм автентифікації, тому без такого налаштування запит створення коментаря поверне `404 Not Found`; сам клієнт не передає `authorId`.
-
-API має бути запущене на `http://localhost:5132`. Виконайте послідовно у PowerShell:
+Для запуску автоматичних тестів виконайте в корені репозиторію `dotnet test Support.slnx`. Інтеграційні тести потребують доступу до SQL Server. Для запуску лише тестів, які працюють без SQL Server, використайте команду нижче.
 
 ```powershell
-$baseUrl = "http://localhost:5132"
-$createBody = @{
-	title = "Не працює принтер"
-	description = "Принтер не друкує документи після заміни картриджа."
-	categoryId = 1
-	priority = 2
-} | ConvertTo-Json
-
-$ticket = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/tickets" -ContentType "application/json" -Body $createBody
-$ticketId = $ticket.id
-$ticket.status
+dotnet test Support.slnx --filter 'FullyQualifiedName!~SupportDbConnectionTests'
 ```
-
-`POST /api/tickets` повертає `201 Created`, заявку зі статусом `0` (`New`) і `Location: /api/tickets/{id}`. ID і `createdAt` генерує сервер.
-
-```powershell
-$assignmentBody = @{ assigneeId = 2 } | ConvertTo-Json
-$ticket = Invoke-RestMethod -Method Patch -Uri "$baseUrl/api/tickets/$ticketId/assignee" -ContentType "application/json" -Body $assignmentBody
-$ticket.assigneeId
-
-$statusBody = @{ status = 1 } | ConvertTo-Json
-$ticket = Invoke-RestMethod -Method Patch -Uri "$baseUrl/api/tickets/$ticketId/status" -ContentType "application/json" -Body $statusBody
-$ticket.status
-```
-
-`PATCH /assignee` повертає `200 OK` з оновленою заявкою та `assigneeId: 2`; `PATCH /status` повертає `200 OK` зі статусом `1` (`InProgress`).
-
-За наявності налаштованого контексту користувача з `NameIdentifier = "1"` додайте коментар:
-
-```powershell
-$commentBody = @{ text = "Після перезапуску принтер працює." } | ConvertTo-Json
-$comment = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/tickets/$ticketId/comments" -ContentType "application/json" -Body $commentBody
-$comment
-```
-
-`POST /comments` повертає `201 Created` з `TicketCommentResponse`: `id` генерується сервером, `text` обрізається по краях, `authorId` дорівнює ID з claim, `createdAt` встановлюється сервером. `GET /comments` повертає масив коментарів у порядку `createdAt` за зростанням, а для однакового часу — `id` за зростанням; якщо заявка чи коментарі відсутні, відповідь — порожній масив.
-
-```powershell
-$statusBody = @{ status = 2 } | ConvertTo-Json
-$ticket = Invoke-RestMethod -Method Patch -Uri "$baseUrl/api/tickets/$ticketId/status" -ContentType "application/json" -Body $statusBody
-$ticket.status
-$ticket.resolvedAt
-
-$statusBody = @{ status = 3 } | ConvertTo-Json
-$ticket = Invoke-RestMethod -Method Patch -Uri "$baseUrl/api/tickets/$ticketId/status" -ContentType "application/json" -Body $statusBody
-$ticket.status
-$ticket.resolvedAt
-```
-
-Після переходу в `Resolved` очікується `status: 2` та заповнений `resolvedAt` у UTC. Після `Closed` очікується `status: 3` і те саме значення `resolvedAt`.
-
-Заборонений перехід, наприклад із `Closed` назад у `Resolved`, повертає `409 Conflict` без тіла:
-
-```http
-PATCH /api/tickets/{id}/status
-Content-Type: application/json
-
-{"status":2}
-
-HTTP/1.1 409 Conflict
-```
-
-До завершення заявки цей самий код `409` повертається, якщо спробувати перевести `New` у `InProgress` без призначеного працівника. Некоректне значення статусу повертає `400`, а коректний, але недозволений перехід — `409`.
-
-## Перевірка збереження після перезапуску API
-
-Виконайте команди в одному вікні PowerShell, залишивши змінну `$ticketId` між зупинкою та повторним запуском API. API має бути запущене на `http://localhost:5132`.
-
-1. Створіть заявку та перевірте статус і заголовок `Location`:
-
-   ```powershell
-   $baseUrl = "http://localhost:5132"
-   $body = '{"title":"Не працює принтер","description":"Перевірка збереження заявки.","categoryId":1,"priority":2}'
-   $created = Invoke-WebRequest -Method Post -Uri "$baseUrl/api/tickets" -ContentType "application/json" -Body $body
-   $created.StatusCode
-   $created.Headers.Location
-   $ticket = $created.Content | ConvertFrom-Json
-   $ticketId = $ticket.id
-   ```
-
-   Очікується код `201`, а `$ticketId` міститиме ID з відповіді.
-
-2. Прочитайте створену заявку:
-
-   ```powershell
-   Invoke-RestMethod -Uri "$baseUrl/api/tickets/$ticketId"
-   ```
-
-3. Зупиніть API клавішами `Ctrl+C` і запустіть його знову командою `dotnet run --project Support.Api`.
-
-4. Повторіть GET з тим самим ID:
-
-   ```powershell
-   Invoke-RestMethod -Uri "$baseUrl/api/tickets/$ticketId"
-   ```
-
-   Заявка має повернутися з тими самими даними, оскільки збережена в SQL Server, а не в пам'яті процесу.
