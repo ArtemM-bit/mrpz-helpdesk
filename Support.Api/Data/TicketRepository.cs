@@ -46,7 +46,12 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
             query = query.Where(ticket => ticket.CategoryId == search.CategoryId.Value);
         }
 
-        var searchText = search.SearchText?.Trim();
+        if (search.AssigneeId.HasValue)
+        {
+            query = query.Where(ticket => ticket.AssigneeId == search.AssigneeId.Value);
+        }
+
+        var searchText = search.Search?.Trim();
         if (!string.IsNullOrEmpty(searchText))
         {
             var normalizedSearchText = searchText.ToLowerInvariant();
@@ -68,10 +73,6 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
     {
         var ticketCounts = await dbContext.Tickets
             .AsNoTracking()
-            .Where(ticket => ticket.Status == Status.New
-                || ticket.Status == Status.InProgress
-                || ticket.Status == Status.Resolved
-                || ticket.Status == Status.Closed)
             .GroupBy(ticket => ticket.CategoryId)
             .Select(group => new { CategoryId = group.Key, TicketCount = group.Count() })
             .ToDictionaryAsync(group => group.CategoryId, group => group.TicketCount, cancellationToken);

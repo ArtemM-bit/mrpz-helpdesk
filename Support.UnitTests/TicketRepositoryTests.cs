@@ -91,13 +91,13 @@ public sealed class TicketRepositoryTests
 
         await using var readContext = new SupportDbContext(options);
         var tickets = await new TicketRepository(readContext).SearchAsync(
-            new TicketSearchRequest(Status.New, Priority.High, 1, "asc"));
+            new TicketSearchRequest(Priority: Priority.High, CategoryId: 1, Status: Status.New, SortDirection: "asc"));
 
         Assert.Equal(3, tickets.Count);
         Assert.Equal([lowerIdTicketId, sameDateTicketId, newerTicketId], tickets.Select(ticket => ticket.Id));
 
         var descending = await new TicketRepository(readContext).SearchAsync(
-            new TicketSearchRequest(Status.New, Priority.High, 1, "desc"));
+            new TicketSearchRequest(Priority: Priority.High, CategoryId: 1, Status: Status.New, SortDirection: "desc"));
 
         Assert.Equal(
             createdAt.AddHours(1),
@@ -107,7 +107,7 @@ public sealed class TicketRepositoryTests
         Assert.Equal(sameDateTicketId, descending.Skip(2).First().Id);
 
         var noMatches = await new TicketRepository(readContext).SearchAsync(
-            new TicketSearchRequest(Status.Closed, Priority.Critical, 999, "asc"));
+            new TicketSearchRequest(Priority: Priority.Critical, CategoryId: 999, Status: Status.Closed, SortDirection: "asc"));
 
         Assert.Empty(noMatches);
     }
@@ -140,24 +140,25 @@ public sealed class TicketRepositoryTests
         context.Tickets.AddRange(
             CreateTicket(Status.New, 1),
             CreateTicket(Status.InProgress, 1),
-            CreateTicket(Status.Resolved, 3));
+            CreateTicket(Status.Resolved, 3),
+            CreateTicket((Status)99, 3));
         await context.SaveChangesAsync();
 
         var repository = new TicketRepository(context);
         var statisticsBeforeCreate = await repository.GetCategoryStatisticsAsync();
-        Assert.Equal(3, statisticsBeforeCreate.Sum(category => category.TicketCount));
-        Assert.Equal(1, statisticsBeforeCreate.Single(category => category.CategoryId == 3).TicketCount);
+        Assert.Equal(4, statisticsBeforeCreate.Sum(category => category.TicketCount));
+        Assert.Equal(2, statisticsBeforeCreate.Single(category => category.CategoryId == 3).TicketCount);
 
         await repository.AddAsync(CreateTicket(Status.Closed, 3));
         var statistics = await repository.GetCategoryStatisticsAsync();
 
-        Assert.Equal(4, statistics.Sum(category => category.TicketCount));
+        Assert.Equal(5, statistics.Sum(category => category.TicketCount));
         Assert.Equal(2, statistics.Single(category => category.CategoryId == 1).TicketCount);
-        Assert.Equal(2, statistics.Single(category => category.CategoryId == 3).TicketCount);
+        Assert.Equal(3, statistics.Single(category => category.CategoryId == 3).TicketCount);
         Assert.All(
             statistics.Where(category => category.CategoryId is 2 or 4 or 5),
             category => Assert.Equal(0, category.TicketCount));
-        Assert.Equal(4, await context.Tickets.CountAsync());
+        Assert.Equal(5, await context.Tickets.CountAsync());
     }
 
     private static Ticket CreateTicket(Status status, int categoryId) => new()

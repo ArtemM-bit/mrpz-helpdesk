@@ -174,7 +174,13 @@ public sealed class TicketsControllerTests
             UnusedCommentService());
 
         var result = await controller.Search(
-            new TicketSearchRequest(Status.New, Priority.High, 1, " ASC ", " TDD "),
+            new TicketSearchRequest(
+                Search: " TDD ",
+                CategoryId: 1,
+                Priority: Priority.High,
+                Status: Status.New,
+                AssigneeId: 2,
+                SortDirection: " ASC "),
             CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
@@ -184,8 +190,9 @@ public sealed class TicketsControllerTests
         Assert.Equal(Status.New, receivedRequest?.Status);
         Assert.Equal(Priority.High, receivedRequest?.Priority);
         Assert.Equal(1, receivedRequest?.CategoryId);
+        Assert.Equal(2, receivedRequest?.AssigneeId);
         Assert.Equal("asc", receivedRequest?.SortDirection);
-        Assert.Equal(" TDD ", receivedRequest?.SearchText);
+        Assert.Equal("TDD", receivedRequest?.Search);
     }
 
     [Fact]
@@ -205,10 +212,21 @@ public sealed class TicketsControllerTests
             UnusedCommentService());
 
         var result = await controller.Search(
-            new TicketSearchRequest(SortDirection: "invalid"),
+            new TicketSearchRequest(
+                CategoryId: 0,
+                Priority: (Priority)99,
+                Status: (Status)99,
+                AssigneeId: -1,
+                SortDirection: "invalid"),
             CancellationToken.None);
 
-        Assert.IsType<BadRequestResult>(result.Result);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains(nameof(TicketSearchRequest.CategoryId), problem.Errors.Keys);
+        Assert.Contains(nameof(TicketSearchRequest.AssigneeId), problem.Errors.Keys);
+        Assert.Contains(nameof(TicketSearchRequest.Priority), problem.Errors.Keys);
+        Assert.Contains(nameof(TicketSearchRequest.Status), problem.Errors.Keys);
+        Assert.Contains(nameof(TicketSearchRequest.SortDirection), problem.Errors.Keys);
         Assert.False(repositoryCalled);
     }
 

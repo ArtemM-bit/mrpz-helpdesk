@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Data.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -50,39 +51,47 @@ public sealed class TicketsController(
     /// в заголовку або описі (OR); значення, що складається лише з пробілів, ігнорується.
     /// За замовчуванням заявки сортуються за датою створення за спаданням.
     /// </remarks>
-    /// <param name="request">Необов'язкові параметри пошуку: status, priority, categoryId, sortDirection і searchText.</param>
+    /// <param name="request">Необов'язкові параметри пошуку: search, categoryId, priority, status, assigneeId і sortDirection.</param>
     /// <param name="cancellationToken">Токен скасування запиту.</param>
     /// <response code="200">Список заявок, що відповідають фільтрам; якщо збігів немає, повертається порожній масив.</response>
-    /// <response code="400">Некоректний параметр запиту, невідомий числовий статус/пріоритет або sortDirection, відмінний від asc чи desc.</response>
+    /// <response code="400">Параметр невалідний; відповідь містить опис помилки для кожного некоректного поля.</response>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<TicketResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<IReadOnlyList<TicketResponse>>> Search(
         [FromQuery] TicketSearchRequest? request,
         CancellationToken cancellationToken)
     {
         var search = request ?? new TicketSearchRequest();
-
-        if (search.Status.HasValue && !Enum.IsDefined(search.Status.Value))
+        var validationResults = new List<ValidationResult>();
+        if (!Validator.TryValidateObject(
+            search,
+            new ValidationContext(search),
+            validationResults,
+            validateAllProperties: true))
         {
-            return BadRequest();
+            var errors = validationResults
+                .SelectMany(result => result.MemberNames
+                    .DefaultIfEmpty(nameof(TicketSearchRequest))
+                    .Select(member => new
+                    {
+                        Member = member,
+                        Message = result.ErrorMessage ?? "Значення некоректне."
+                    }))
+                .GroupBy(error => error.Member)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(error => error.Message).ToArray());
+            return BadRequest(new ValidationProblemDetails(errors));
         }
 
-        if (search.Priority.HasValue && !Enum.IsDefined(search.Priority.Value))
+        var normalized = search with
         {
-            return BadRequest();
-        }
-
-        var sortDirection = string.IsNullOrWhiteSpace(search.SortDirection)
-            ? "desc"
-            : search.SortDirection.Trim().ToLowerInvariant();
-
-        if (sortDirection is not ("asc" or "desc"))
-        {
-            return BadRequest();
-        }
-
-        var normalized = search with { SortDirection = sortDirection };
+            Search = string.IsNullOrWhiteSpace(search.Search) ? null : search.Search.Trim(),
+            SortDirection = string.IsNullOrWhiteSpace(search.SortDirection)
+                ? "desc"
+                : search.SortDirection.Trim().ToLowerInvariant()
+        };
         var tickets = await ticketRepository.SearchAsync(normalized, cancellationToken);
         return Ok(tickets.Select(ticket => ticket.ToResponse()).ToList());
     }

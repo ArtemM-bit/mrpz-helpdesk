@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using Support.Api.Data;
 using Support.Api.DTOs;
@@ -19,10 +20,10 @@ public sealed class TicketSearchTests
 
         var repository = new TicketRepository(context);
 
-        var uppercaseSearch = await repository.SearchAsync(new TicketSearchRequest(SearchText: "ПРИНТЕР"));
-        var lowercaseSearch = await repository.SearchAsync(new TicketSearchRequest(SearchText: " принтер "));
-        var whitespaceSearch = await repository.SearchAsync(new TicketSearchRequest(SearchText: "   "));
-        var noMatches = await repository.SearchAsync(new TicketSearchRequest(SearchText: "невідомий текст"));
+        var uppercaseSearch = await repository.SearchAsync(new TicketSearchRequest(Search: "ПРИНТЕР"));
+        var lowercaseSearch = await repository.SearchAsync(new TicketSearchRequest(Search: " принтер "));
+        var whitespaceSearch = await repository.SearchAsync(new TicketSearchRequest(Search: "   "));
+        var noMatches = await repository.SearchAsync(new TicketSearchRequest(Search: "невідомий текст"));
 
         Assert.Equal([titleMatch.Id, descriptionMatch.Id], uppercaseSearch.Select(ticket => ticket.Id));
         Assert.Equal([titleMatch.Id, descriptionMatch.Id], lowercaseSearch.Select(ticket => ticket.Id));
@@ -55,6 +56,54 @@ public sealed class TicketSearchTests
         Assert.Equal([matching.Id, otherStatus.Id, otherCategory.Id], byPriority.Select(ticket => ticket.Id));
         Assert.Equal([matching.Id, otherStatus.Id, otherPriority.Id], byCategory.Select(ticket => ticket.Id));
         Assert.Equal([matching.Id], combined.Select(ticket => ticket.Id));
+    }
+
+    [Fact]
+    public async Task SearchAsync_FiltersByAssigneeId()
+    {
+        await using var context = await CreateContextAsync();
+        var assignedToOne = CreateTicket("One", "Description", id: Id(1));
+        assignedToOne.AssigneeId = 1;
+        var assignedToTwo = CreateTicket("Two", "Description", id: Id(2));
+        assignedToTwo.AssigneeId = 2;
+        var unassigned = CreateTicket("Unassigned", "Description", id: Id(3));
+        context.Tickets.AddRange(assignedToOne, assignedToTwo, unassigned);
+        await context.SaveChangesAsync();
+
+        var results = await new TicketRepository(context).SearchAsync(new TicketSearchRequest(AssigneeId: 2));
+
+        Assert.Equal([assignedToTwo.Id], results.Select(ticket => ticket.Id));
+    }
+
+    [Fact]
+    public void TicketSearchRequest_ValidatesPositiveIdsDefinedEnumsAndSortDirection()
+    {
+        var invalidRequests = new[]
+        {
+            new TicketSearchRequest(CategoryId: 0),
+            new TicketSearchRequest(AssigneeId: -1),
+            new TicketSearchRequest(Priority: (Priority)99),
+            new TicketSearchRequest(Status: (Status)99),
+            new TicketSearchRequest(SortDirection: "sideways")
+        };
+
+        foreach (var request in invalidRequests)
+        {
+            var validationResults = new List<ValidationResult>();
+            var isValid = Validator.TryValidateObject(
+                request,
+                new ValidationContext(request),
+                validationResults,
+                validateAllProperties: true);
+
+            Assert.False(isValid);
+            Assert.NotEmpty(validationResults);
+            Assert.All(validationResults, result => Assert.False(string.IsNullOrWhiteSpace(result.ErrorMessage)));
+        }
+
+        Assert.Equal("desc", new TicketSearchRequest().SortDirection);
+        Assert.True(Validate(new TicketSearchRequest(SortDirection: " ASC ")));
+        Assert.True(Validate(new TicketSearchRequest(CategoryId: 1, AssigneeId: 2)));
     }
 
     [Fact]
@@ -92,6 +141,16 @@ public sealed class TicketSearchTests
         Assert.Equal(1, statistics.Single(category => category.CategoryId == 2).TicketCount);
         Assert.Equal(0, statistics.Single(category => category.CategoryId == 3).TicketCount);
         Assert.Equal(3, statistics.Sum(category => category.TicketCount));
+    }
+
+    private static bool Validate(TicketSearchRequest request)
+    {
+        var validationResults = new List<ValidationResult>();
+        return Validator.TryValidateObject(
+            request,
+            new ValidationContext(request),
+            validationResults,
+            validateAllProperties: true);
     }
 
     private static async Task<SupportDbContext> CreateContextAsync()

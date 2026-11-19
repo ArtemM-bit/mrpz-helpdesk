@@ -44,8 +44,8 @@ public sealed class TicketSearchSqlServerTests
         {
             var pair = cases[index];
             var expectedIds = new[] { tickets[index * 2].Id, tickets[index * 2 + 1].Id };
-            var lowerSearch = await repository.SearchAsync(new TicketSearchRequest(SearchText: pair.Lower));
-            var upperSearch = await repository.SearchAsync(new TicketSearchRequest(SearchText: pair.Upper));
+            var lowerSearch = await repository.SearchAsync(new TicketSearchRequest(Search: pair.Lower));
+            var upperSearch = await repository.SearchAsync(new TicketSearchRequest(Search: pair.Upper));
 
             Assert.Equal(expectedIds, lowerSearch.Select(ticket => ticket.Id).Order());
             Assert.Equal(expectedIds, upperSearch.Select(ticket => ticket.Id).Order());
@@ -56,18 +56,21 @@ public sealed class TicketSearchSqlServerTests
     public async Task SearchAsync_CombinesStatusPriorityAndCategoryFilters()
     {
         await using var database = await SqlServerTestDatabase.CreateAsync();
-        var expected = CreateTicket("TDD цільова заявка", Id(1), Status.New, Priority.High, 1);
+        var expected = CreateTicket("TDD цільова заявка", Id(1), Status.New, Priority.High, 1, assigneeId: 2);
         database.Context.Tickets.AddRange(
             expected,
-            CreateTicket("TDD інший статус", Id(2), Status.Closed, Priority.High, 1),
-            CreateTicket("TDD інший пріоритет", Id(3), Status.New, Priority.Low, 1),
-            CreateTicket("TDD інша категорія", Id(4), Status.New, Priority.High, 2));
+            CreateTicket("TDD інший статус", Id(2), Status.Closed, Priority.High, 1, assigneeId: 2),
+            CreateTicket("TDD інший пріоритет", Id(3), Status.New, Priority.Low, 1, assigneeId: 2),
+            CreateTicket("TDD інша категорія", Id(4), Status.New, Priority.High, 2, assigneeId: 2),
+            CreateTicket("TDD інший відповідальний", Id(5), Status.New, Priority.High, 1, assigneeId: 1));
         await database.Context.SaveChangesAsync();
 
         var results = await new TicketRepository(database.Context).SearchAsync(new TicketSearchRequest(
-            Status: Status.New,
-            Priority: Priority.High,
+            Search: "TDD",
             CategoryId: 1,
+            Priority: Priority.High,
+            Status: Status.New,
+            AssigneeId: 2,
             SortDirection: "asc"));
 
         Assert.Equal([expected.Id], results.Select(ticket => ticket.Id));
@@ -78,7 +81,8 @@ public sealed class TicketSearchSqlServerTests
         Guid id,
         Status status = Status.New,
         Priority priority = Priority.Medium,
-        int categoryId = 1) => new()
+        int categoryId = 1,
+        int? assigneeId = null) => new()
     {
         Id = id,
         Title = title,
@@ -86,7 +90,8 @@ public sealed class TicketSearchSqlServerTests
         CategoryId = categoryId,
         Priority = priority,
         Status = status,
-        CreatedAt = new DateTimeOffset(2026, 1, 15, 10, 30, 0, TimeSpan.Zero)
+        CreatedAt = new DateTimeOffset(2026, 1, 15, 10, 30, 0, TimeSpan.Zero),
+        AssigneeId = assigneeId
     };
 
     private static Guid Id(int value) => Guid.Parse($"00000000-0000-0000-0000-{value:D12}");

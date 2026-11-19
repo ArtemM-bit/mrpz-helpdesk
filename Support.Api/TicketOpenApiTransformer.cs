@@ -140,19 +140,20 @@ public static class TicketOpenApiTransformer
         {
             operation.Summary = "Пошук заявок";
             operation.Description = """
-                Повертає масив `TicketResponse`; якщо збігів немає, повертається `[]`. Усі параметри необов'язкові. Різні фільтри (`status`, `priority`, `categoryId`, `searchText`) комбінуються через AND. `searchText` шукає без урахування регістру в `Title` АБО `Description` (OR); зовнішні пробіли обрізаються, значення лише з пробілів ігнорується.
+                Повертає масив `TicketResponse`; якщо збігів немає, повертається `[]`. Усі параметри необов'язкові. Різні фільтри (`search`, `categoryId`, `priority`, `status`, `assigneeId`) комбінуються через AND. `search` шукає без урахування регістру в `Title` АБО `Description` (OR); зовнішні пробіли обрізаються, значення лише з пробілів ігнорується.
 
                 | Параметр | Тип | Допустимі значення | Типове значення |
                 | --- | --- | --- | --- |
-                | `status` | integer | `0` = `New`, `1` = `InProgress`, `2` = `Resolved`, `3` = `Closed` | немає фільтра |
+                | `search` | string | будь-який текст; порожній/пробільний текст не фільтрує | немає фільтра |
+                | `categoryId` | integer | додатний ID категорії; початкові категорії мають ID `1`–`5` | немає фільтра |
                 | `priority` | integer | `0` = `Low`, `1` = `Medium`, `2` = `High`, `3` = `Critical` | немає фільтра |
-                | `categoryId` | integer | ID категорії; початкові категорії мають ID `1`–`5` | немає фільтра |
-                | `searchText` | string | будь-який текст; порожній/пробільний текст не фільтрує | немає фільтра |
+                | `status` | integer | `0` = `New`, `1` = `InProgress`, `2` = `Resolved`, `3` = `Closed` | немає фільтра |
+                | `assigneeId` | integer | додатний ID відповідального працівника | немає фільтра |
                 | `sortDirection` | string | `asc` або `desc` (без урахування регістру; зовнішні пробіли обрізаються) | `desc` |
 
-                Сортування застосовується за `CreatedAt`; за однакового часу заявки впорядковуються за `Id` за зростанням. За `desc` дата сортується за спаданням, за `asc` — за зростанням. Фільтра за відповідальним немає; `assigneeId` присутній лише у відповіді `TicketResponse` і може бути `null`.
+                Сортування застосовується за `CreatedAt`; за однакового часу заявки впорядковуються за `Id` за зростанням. За `desc` дата сортується за спаданням, за `asc` — за зростанням.
 
-                `400 Bad Request` повертається для некоректного значення query-параметра, статусу або пріоритету поза наведеними кодами, а також для `sortDirection`, відмінного від `asc`/`desc`. Невідомий числовий `categoryId` сам по собі не є помилкою та дає порожній результат.
+                `400 Bad Request` повертається з описом помилки для `categoryId` або `assigneeId`, що не перевищує 0, невизначеного коду `status` чи `priority`, або `sortDirection`, відмінного від `asc`/`desc`. Невідомий додатний `categoryId` або `assigneeId` сам по собі не є помилкою та дає порожній результат.
                 """;
 
             foreach (var parameter in operation.Parameters)
@@ -160,17 +161,18 @@ public static class TicketOpenApiTransformer
                 var parameterName = parameter.Name?.Split('.').Last().ToLowerInvariant();
                 parameter.Description = parameterName switch
                 {
-                    "status" => "Необов'язковий integer: 0 New, 1 InProgress, 2 Resolved, 3 Closed.",
-                    "priority" => "Необов'язковий integer: 0 Low, 1 Medium, 2 High, 3 Critical.",
-                    "categoryid" => "Необов'язковий integer ID категорії; початкові ID: 1–5.",
-                    "searchtext" => "Необов'язковий рядок; пошук без урахування регістру в Title або Description, пробільне значення ігнорується.",
+                    "status" => "Необов'язковий визначений integer: 0 New, 1 InProgress, 2 Resolved, 3 Closed.",
+                    "priority" => "Необов'язковий визначений integer: 0 Low, 1 Medium, 2 High, 3 Critical.",
+                    "categoryid" => "Необов'язковий додатний integer ID категорії; початкові ID: 1–5.",
+                    "assigneeid" => "Необов'язковий додатний integer ID відповідального працівника.",
+                    "search" => "Необов'язковий рядок; пошук без урахування регістру в Title або Description, пробільне значення ігнорується.",
                     "sortdirection" => "Необов'язковий рядок asc або desc; за замовчуванням desc.",
                     _ => parameter.Description
                 };
             }
 
             SetResponseDescription(operation, "200", "Повертається масив заявок за схемою `TicketResponse`; він може бути порожнім.");
-            SetResponseDescription(operation, "400", "Некоректне значення параметра, невідомий числовий статус/пріоритет або sortDirection, відмінний від asc чи desc; тіло відповіді відсутнє.");
+            SetResponseDescription(operation, "400", "Параметр невалідний; повертається ValidationProblemDetails із повідомленнями про помилки.");
             SetContentExample(operation, "200", JsonNode.Parse(TicketSearchResponseExample)!);
         }
         else if (path == "api/tickets" && context.Description.HttpMethod == "POST")
@@ -198,7 +200,7 @@ public static class TicketOpenApiTransformer
         {
             operation.Summary = "Статистика заявок за категоріями";
             operation.Description = """
-                Повертає всі категорії у порядку `CategoryId` за зростанням. Поля: `categoryId` — integer ID категорії; `categoryName` — її назва (string); `ticketCount` — кількість заявок (integer). `ticketCount` охоплює всі чотири статуси: `New` (0), `InProgress` (1), `Resolved` (2) і `Closed` (3). Категорії з нульовою кількістю заявок також включені. Цей підрахунок не залежить від query-фільтрів `GET /api/tickets`; цей маршрут не приймає фільтри.
+                Повертає всі категорії у порядку `CategoryId` за зростанням. Поля: `categoryId` — integer ID категорії; `categoryName` — її назва (string); `ticketCount` — кількість заявок (integer). `ticketCount` охоплює всі збережені заявки незалежно від статусу чи query-фільтрів `GET /api/tickets`; цей маршрут не приймає фільтри. Категорії з нульовою кількістю заявок також включені.
                 """;
             SetResponseDescription(operation, "200", "Усі категорії з кількістю заявок за всіма статусами; категорії без заявок мають `ticketCount: 0`.");
             SetContentExample(operation, "200", JsonNode.Parse(CategoryStatisticsResponseExample)!);
