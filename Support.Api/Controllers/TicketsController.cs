@@ -44,6 +44,16 @@ public sealed class TicketsController(
         }
     }
 
+    /// <summary>Шукає заявки за необов'язковими фільтрами та повертає їх у заданому порядку.</summary>
+    /// <remarks>
+    /// Різні фільтри комбінуються через AND. Пошуковий текст шукається без урахування регістру
+    /// в заголовку або описі (OR); значення, що складається лише з пробілів, ігнорується.
+    /// За замовчуванням заявки сортуються за датою створення за спаданням.
+    /// </remarks>
+    /// <param name="request">Необов'язкові параметри пошуку: status, priority, categoryId, sortDirection і searchText.</param>
+    /// <param name="cancellationToken">Токен скасування запиту.</param>
+    /// <response code="200">Список заявок, що відповідають фільтрам; якщо збігів немає, повертається порожній масив.</response>
+    /// <response code="400">Некоректний параметр запиту, невідомий числовий статус/пріоритет або sortDirection, відмінний від asc чи desc.</response>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<TicketResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
