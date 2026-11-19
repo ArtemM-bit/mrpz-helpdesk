@@ -44,6 +44,39 @@ public sealed class TicketsController(
         }
     }
 
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<TicketResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<IReadOnlyList<TicketResponse>>> Search(
+        [FromQuery] TicketSearchRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var search = request ?? new TicketSearchRequest();
+
+        if (search.Status.HasValue && !Enum.IsDefined(search.Status.Value))
+        {
+            return BadRequest();
+        }
+
+        if (search.Priority.HasValue && !Enum.IsDefined(search.Priority.Value))
+        {
+            return BadRequest();
+        }
+
+        var sortDirection = string.IsNullOrWhiteSpace(search.SortDirection)
+            ? "desc"
+            : search.SortDirection.Trim().ToLowerInvariant();
+
+        if (sortDirection is not ("asc" or "desc"))
+        {
+            return BadRequest();
+        }
+
+        var normalized = search with { SortDirection = sortDirection };
+        var tickets = await ticketRepository.SearchAsync(normalized, cancellationToken);
+        return Ok(tickets.Select(ticket => ticket.ToResponse()).ToList());
+    }
+
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

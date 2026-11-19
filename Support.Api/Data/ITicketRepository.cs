@@ -1,3 +1,4 @@
+using Support.Api.DTOs;
 using Support.Api.Models;
 
 namespace Support.Api.Data;
@@ -9,6 +10,13 @@ public interface ITicketRepository
     Task<Ticket?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task<Ticket?> GetForAssignmentAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Ticket>> SearchAsync(
+        TicketSearchRequest search,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<Ticket>>([]);
+    }
 
     Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default);
 

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Support.Api.DTOs;
 using Support.Api.Models;
 
 namespace Support.Api.Data;
@@ -22,6 +23,35 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
     {
         return dbContext.Tickets
             .SingleOrDefaultAsync(ticket => ticket.Id == id, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Ticket>> SearchAsync(
+        TicketSearchRequest search,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<Ticket> query = dbContext.Tickets.AsNoTracking();
+
+        if (search.Status.HasValue)
+        {
+            query = query.Where(ticket => ticket.Status == search.Status.Value);
+        }
+
+        if (search.Priority.HasValue)
+        {
+            query = query.Where(ticket => ticket.Priority == search.Priority.Value);
+        }
+
+        if (search.CategoryId.HasValue)
+        {
+            query = query.Where(ticket => ticket.CategoryId == search.CategoryId.Value);
+        }
+
+        var sortDirection = search.SortDirection?.Trim();
+        query = string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase)
+            ? query.OrderBy(ticket => ticket.CreatedAt).ThenBy(ticket => ticket.Id)
+            : query.OrderByDescending(ticket => ticket.CreatedAt).ThenBy(ticket => ticket.Id);
+
+        return await query.ToListAsync(cancellationToken);
     }
 
     public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default)

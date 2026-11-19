@@ -18,6 +18,7 @@ public sealed class TicketsControllerTests
     {
         var controllerRoute = typeof(TicketsController).GetCustomAttribute<RouteAttribute>();
         var createMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Create));
+        var searchMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Search));
         var getByIdMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.GetById));
         var assignMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Assign));
         var changeStatusMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.ChangeStatus));
@@ -27,6 +28,8 @@ public sealed class TicketsControllerTests
         Assert.Equal("api/tickets", controllerRoute?.Template);
         Assert.NotNull(createMethod);
         Assert.NotNull(createMethod.GetCustomAttribute<HttpPostAttribute>());
+        Assert.NotNull(searchMethod);
+        Assert.NotNull(searchMethod.GetCustomAttribute<HttpGetAttribute>());
         Assert.NotNull(getByIdMethod);
         Assert.Equal("{id:guid}", getByIdMethod.GetCustomAttribute<HttpGetAttribute>()?.Template);
         Assert.NotNull(assignMethod);
