@@ -144,6 +144,75 @@ public sealed class TicketsControllerTests
     }
 
     [Fact]
+    public async Task Search_ValidFilters_PassesFiltersToStorageAndReturnsExpectedIds()
+    {
+        var expectedIds = new[]
+        {
+            Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Guid.Parse("00000000-0000-0000-0000-000000000002")
+        };
+        TicketSearchRequest? receivedRequest = null;
+        var repository = new StubTicketRepository(searchAsync: request =>
+        {
+            receivedRequest = request;
+            return Task.FromResult<IReadOnlyList<Ticket>>(expectedIds.Select(id => new Ticket
+            {
+                Id = id,
+                Title = "TDD",
+                Description = "Test description",
+                CategoryId = 1,
+                Priority = Priority.High,
+                Status = Status.New,
+                CreatedAt = DateTimeOffset.UnixEpoch
+            }).ToArray());
+        });
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            repository,
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            UnusedCommentService());
+
+        var result = await controller.Search(
+            new TicketSearchRequest(Status.New, Priority.High, 1, " ASC ", " TDD "),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var tickets = Assert.IsAssignableFrom<IReadOnlyList<TicketResponse>>(ok.Value);
+        Assert.Equal(expectedIds, tickets.Select(ticket => ticket.Id));
+        Assert.Equal(2, tickets.Count);
+        Assert.Equal(Status.New, receivedRequest?.Status);
+        Assert.Equal(Priority.High, receivedRequest?.Priority);
+        Assert.Equal(1, receivedRequest?.CategoryId);
+        Assert.Equal("asc", receivedRequest?.SortDirection);
+        Assert.Equal(" TDD ", receivedRequest?.SearchText);
+    }
+
+    [Fact]
+    public async Task Search_InvalidSortDirection_Returns400WithoutReadingStorage()
+    {
+        var repositoryCalled = false;
+        var repository = new StubTicketRepository(searchAsync: _ =>
+        {
+            repositoryCalled = true;
+            return Task.FromResult<IReadOnlyList<Ticket>>([]);
+        });
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            repository,
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            UnusedCommentService());
+
+        var result = await controller.Search(
+            new TicketSearchRequest(SortDirection: "invalid"),
+            CancellationToken.None);
+
+        Assert.IsType<BadRequestResult>(result.Result);
+        Assert.False(repositoryCalled);
+    }
+
+    [Fact]
     public async Task Assign_ValidRequest_Returns200WithUpdatedTicket()
     {
         var response = CreateResponse() with { AssigneeId = 2, Status = Status.InProgress };
@@ -348,7 +417,8 @@ public sealed class TicketsControllerTests
     }
 
     private sealed class StubTicketRepository(
-        Func<Guid, Task<Ticket?>>? getByIdAsync = null) : ITicketRepository
+        Func<Guid, Task<Ticket?>>? getByIdAsync = null,
+        Func<TicketSearchRequest, Task<IReadOnlyList<Ticket>>>? searchAsync = null) : ITicketRepository
     {
         public Task AddAsync(Ticket ticket, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -357,6 +427,11 @@ public sealed class TicketsControllerTests
 
         public Task<Ticket?> GetForAssignmentAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult<Ticket?>(null);
+
+        public Task<IReadOnlyList<Ticket>> SearchAsync(
+            TicketSearchRequest search,
+            CancellationToken cancellationToken = default) =>
+            searchAsync?.Invoke(search) ?? Task.FromResult<IReadOnlyList<Ticket>>([]);
 
         public Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
             CancellationToken cancellationToken = default) => throw new NotImplementedException();

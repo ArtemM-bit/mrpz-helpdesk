@@ -6,4 +6,5 @@ public sealed record TicketSearchRequest(
     Status? Status = null,
     Priority? Priority = null,
     int? CategoryId = null,
-    string? SortDirection = null);
+    string? SortDirection = null,
+    string? SearchText = null);

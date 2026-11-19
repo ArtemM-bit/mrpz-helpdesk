@@ -46,6 +46,15 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
             query = query.Where(ticket => ticket.CategoryId == search.CategoryId.Value);
         }
 
+        var searchText = search.SearchText?.Trim();
+        if (!string.IsNullOrEmpty(searchText))
+        {
+            var normalizedSearchText = searchText.ToLowerInvariant();
+            query = query.Where(ticket =>
+                ticket.Title.ToLower().Contains(normalizedSearchText)
+                || ticket.Description.ToLower().Contains(normalizedSearchText));
+        }
+
         var sortDirection = search.SortDirection?.Trim();
         query = string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase)
             ? query.OrderBy(ticket => ticket.CreatedAt).ThenBy(ticket => ticket.Id)
