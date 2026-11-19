@@ -54,6 +54,33 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
         return await query.ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var ticketCounts = await dbContext.Tickets
+            .AsNoTracking()
+            .Where(ticket => ticket.Status == Status.New
+                || ticket.Status == Status.InProgress
+                || ticket.Status == Status.Resolved
+                || ticket.Status == Status.Closed)
+            .GroupBy(ticket => ticket.CategoryId)
+            .Select(group => new { CategoryId = group.Key, TicketCount = group.Count() })
+            .ToDictionaryAsync(group => group.CategoryId, group => group.TicketCount, cancellationToken);
+
+        var categories = await dbContext.Categories
+            .AsNoTracking()
+            .OrderBy(category => category.Id)
+            .Select(category => new { category.Id, category.Name })
+            .ToListAsync(cancellationToken);
+
+        return categories
+            .Select(category => new CategoryStatisticsResponse(
+                category.Id,
+                category.Name,
+                ticketCounts.GetValueOrDefault(category.Id)))
+            .ToList();
+    }
+
     public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default)
     {
         return dbContext.Users.SingleOrDefaultAsync(user => user.Id == id, cancellationToken);

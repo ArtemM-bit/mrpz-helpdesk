@@ -111,4 +111,63 @@ public sealed class TicketRepositoryTests
 
         Assert.Empty(noMatches);
     }
+
+    [Fact]
+    public async Task GetCategoryStatisticsAsync_NoTickets_ReturnsEveryCategoryWithZeroCountInIdOrder()
+    {
+        var options = new DbContextOptionsBuilder<SupportDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new SupportDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+
+        var statistics = await new TicketRepository(context).GetCategoryStatisticsAsync();
+
+        Assert.Equal([1, 2, 3, 4, 5], statistics.Select(category => category.CategoryId));
+        Assert.All(statistics, category => Assert.Equal(0, category.TicketCount));
+    }
+
+    [Fact]
+    public async Task GetCategoryStatisticsAsync_CountsEveryStatusPerCategory()
+    {
+        var options = new DbContextOptionsBuilder<SupportDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new SupportDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Tickets.AddRange(
+            CreateTicket(Status.New, 1),
+            CreateTicket(Status.InProgress, 1),
+            CreateTicket(Status.Resolved, 3));
+        await context.SaveChangesAsync();
+
+        var repository = new TicketRepository(context);
+        var statisticsBeforeCreate = await repository.GetCategoryStatisticsAsync();
+        Assert.Equal(3, statisticsBeforeCreate.Sum(category => category.TicketCount));
+        Assert.Equal(1, statisticsBeforeCreate.Single(category => category.CategoryId == 3).TicketCount);
+
+        await repository.AddAsync(CreateTicket(Status.Closed, 3));
+        var statistics = await repository.GetCategoryStatisticsAsync();
+
+        Assert.Equal(4, statistics.Sum(category => category.TicketCount));
+        Assert.Equal(2, statistics.Single(category => category.CategoryId == 1).TicketCount);
+        Assert.Equal(2, statistics.Single(category => category.CategoryId == 3).TicketCount);
+        Assert.All(
+            statistics.Where(category => category.CategoryId is 2 or 4 or 5),
+            category => Assert.Equal(0, category.TicketCount));
+        Assert.Equal(4, await context.Tickets.CountAsync());
+    }
+
+    private static Ticket CreateTicket(Status status, int categoryId) => new()
+    {
+        Id = Guid.NewGuid(),
+        Title = "Заявка",
+        Description = "Опис заявки",
+        CategoryId = categoryId,
+        Priority = Priority.Medium,
+        Status = status,
+        CreatedAt = DateTimeOffset.UtcNow
+    };
 }

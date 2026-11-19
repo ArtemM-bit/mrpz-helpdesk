@@ -18,6 +18,9 @@ public interface ITicketRepository
         return Task.FromResult<IReadOnlyList<Ticket>>([]);
     }
 
+    Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
+        CancellationToken cancellationToken = default);
+
     Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default);
 
     Task AddCommentAsync(TicketComment comment, CancellationToken cancellationToken = default);
