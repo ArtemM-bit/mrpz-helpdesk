@@ -133,6 +133,54 @@ public sealed class TicketsControllerTests
     }
 
     [Fact]
+    public async Task GetOverdue_NoMatches_Returns200WithEmptyList()
+    {
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(getOverdueAsync: _ => Task.FromResult<IReadOnlyList<Ticket>>([])),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            UnusedCommentService(),
+            UnusedDeadlineService());
+
+        var result = await controller.GetOverdue(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<TicketResponse>>(ok.Value));
+    }
+
+    [Fact]
+    public async Task GetOverdue_Matches_ReturnsMappedResponses()
+    {
+        var overdue = new Ticket
+        {
+            Id = Guid.NewGuid(),
+            Title = "Прострочена",
+            Description = "Опис",
+            CategoryId = 1,
+            Priority = Priority.High,
+            Status = Status.InProgress,
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-2),
+            DueAt = DateTimeOffset.UtcNow.AddDays(-1)
+        };
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(getOverdueAsync: _ => Task.FromResult<IReadOnlyList<Ticket>>( [overdue])),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            UnusedCommentService(),
+            UnusedDeadlineService());
+
+        var result = await controller.GetOverdue(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var responses = Assert.IsAssignableFrom<IReadOnlyList<TicketResponse>>(ok.Value);
+        var response = Assert.Single(responses);
+        Assert.True(response.IsOverdue);
+        Assert.Equal(overdue.DueAt, response.DueAt);
+    }
+
+    [Fact]
     public async Task GetById_MissingTicket_Returns404()
     {
         var controller = new TicketsController(
@@ -452,7 +500,8 @@ public sealed class TicketsControllerTests
     }
 
     private sealed class StubTicketRepository(
-        Func<Guid, Task<Ticket?>>? getByIdAsync = null) : ITicketRepository
+        Func<Guid, Task<Ticket?>>? getByIdAsync = null,
+        Func<DateTimeOffset, Task<IReadOnlyList<Ticket>>>? getOverdueAsync = null) : ITicketRepository
     {
         public Task AddAsync(Ticket ticket, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -461,6 +510,11 @@ public sealed class TicketsControllerTests
 
         public Task<Ticket?> GetForAssignmentAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult<Ticket?>(null);
+
+        public Task<IReadOnlyList<Ticket>> GetOverdueAsync(
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default) =>
+            getOverdueAsync?.Invoke(now) ?? Task.FromResult<IReadOnlyList<Ticket>>([]);
 
         public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult<User?>(null);

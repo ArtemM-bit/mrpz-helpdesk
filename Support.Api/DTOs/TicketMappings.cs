@@ -35,6 +35,6 @@ public static class TicketMappings
             ticket.AssigneeId,
             ticket.ResolvedAt?.ToUniversalTime(),
             dueAt,
-            dueAt.HasValue && dueAt.Value < now);
+            TicketOverdueRules.IsOverdue(ticket, now));
     }
 }

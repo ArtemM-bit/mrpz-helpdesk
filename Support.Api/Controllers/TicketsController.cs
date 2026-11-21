@@ -16,7 +16,8 @@ public sealed class TicketsController(
     ITicketAssignmentService ticketAssignmentService,
     ITicketStatusService ticketStatusService,
     ITicketCommentService ticketCommentService,
-    ITicketDeadlineService ticketDeadlineService) : ControllerBase
+    ITicketDeadlineService ticketDeadlineService,
+    IClock? clock = null) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status201Created)]
@@ -43,6 +44,20 @@ public sealed class TicketsController(
                 statusCode: StatusCodes.Status500InternalServerError,
                 title: "Не вдалося зберегти заявку.");
         }
+    }
+
+    [HttpGet("overdue")]
+    [ProducesResponseType(typeof(IReadOnlyList<TicketResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<TicketResponse>>> GetOverdue(
+        CancellationToken cancellationToken)
+    {
+        var now = (clock?.UtcNow ?? DateTimeOffset.UtcNow).ToUniversalTime();
+        var tickets = await ticketRepository.GetOverdueAsync(now, cancellationToken);
+        var responses = tickets
+            .Select(ticket => ticket.ToResponse(now))
+            .ToList();
+
+        return Ok(responses);
     }
 
     [HttpGet("{id:guid}")]

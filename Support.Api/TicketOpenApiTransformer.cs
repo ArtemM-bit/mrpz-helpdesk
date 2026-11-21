@@ -167,6 +167,13 @@ public static class TicketOpenApiTransformer
             SetContentExample(operation, "201", JsonNode.Parse(TicketResponseExample)!);
             SetContentExample(operation, "400", JsonNode.Parse(ValidationErrorExample)!);
         }
+        else if (path == "api/tickets/overdue" && context.Description.HttpMethod == "GET")
+        {
+            operation.Summary = "Отримати прострочені заявки";
+            operation.Description = "Повертає заявки зі встановленим терміном, де `DueAt < now` і статус `New` або `InProgress`. Терміни порівнюються відносно одного моменту поточного часу для всього запиту. Сортування: `DueAt` за зростанням, потім `Id`. Завершені заявки та заявки без терміну не повертаються. Якщо збігів немає, повертається порожній масив `200 OK`.";
+            SetResponseDescription(operation, "200", "Повертається відсортований масив прострочених заявок або порожній масив.");
+            SetContentExample(operation, "200", JsonNode.Parse($"[{TicketWithDeadlineResponseExample}]")!);
+        }
         else if (path == "api/tickets/{id}" && context.Description.HttpMethod == "GET")
         {
             operation.Summary = "Отримати заявку за ID";

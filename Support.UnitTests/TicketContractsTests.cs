@@ -202,6 +202,40 @@ public sealed class TicketContractsTests
         Assert.All(users, user => Assert.False(string.IsNullOrWhiteSpace(user.FullName)));
     }
 
+    [Theory]
+    [InlineData(Status.New, true)]
+    [InlineData(Status.InProgress, true)]
+    [InlineData(Status.Resolved, false)]
+    [InlineData(Status.Closed, false)]
+    public void TicketOverdueRules_AppliesStatusAndStrictDeadline(Status status, bool expected)
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
+        var ticket = new Ticket
+        {
+            DueAt = now.AddTicks(-1),
+            Status = status
+        };
+
+        Assert.Equal(expected, TicketOverdueRules.IsOverdue(ticket, now));
+    }
+
+    [Fact]
+    public void TicketOverdueRules_NullAndBoundaryAreNotOverdue()
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.False(TicketOverdueRules.IsOverdue(new Ticket
+        {
+            DueAt = null,
+            Status = Status.New
+        }, now));
+        Assert.False(TicketOverdueRules.IsOverdue(new Ticket
+        {
+            DueAt = now,
+            Status = Status.InProgress
+        }, now));
+    }
+
     [Fact]
     public void SupportDbContext_ModelsDueAtAsNullableAndDoesNotPersistIsOverdue()
     {
