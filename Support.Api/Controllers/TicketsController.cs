@@ -15,7 +15,8 @@ public sealed class TicketsController(
     ITicketRepository ticketRepository,
     ITicketAssignmentService ticketAssignmentService,
     ITicketStatusService ticketStatusService,
-    ITicketCommentService ticketCommentService) : ControllerBase
+    ITicketCommentService ticketCommentService,
+    ITicketDeadlineService ticketDeadlineService) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status201Created)]
@@ -53,6 +54,34 @@ public sealed class TicketsController(
     {
         var ticket = await ticketRepository.GetByIdAsync(id, cancellationToken);
         return ticket is null ? NotFound() : Ok(ticket.ToResponse());
+    }
+
+    [HttpPatch("{id:guid}/deadline")]
+    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Dictionary<string, string[]>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<TicketResponse>> UpdateDeadline(
+        Guid id,
+        [FromBody] UpdateDeadlineRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await ticketDeadlineService.UpdateAsync(id, request, cancellationToken);
+            return result.Error switch
+            {
+                TicketDeadlineError.InvalidDueAt => BadRequest(result.Errors),
+                TicketDeadlineError.TicketNotFound => NotFound(),
+                _ => Ok(result.Ticket)
+            };
+        }
+        catch (Exception exception) when (exception is DbUpdateException or DbException)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Не вдалося зберегти заявку.");
+        }
     }
 
     [HttpPatch("{id:guid}/assignee")]

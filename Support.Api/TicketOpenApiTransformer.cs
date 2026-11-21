@@ -25,7 +25,9 @@ public static class TicketOpenApiTransformer
           "status": 0,
           "createdAt": "2026-01-15T10:30:00+00:00",
           "assigneeId": 2,
-          "resolvedAt": null
+          "resolvedAt": null,
+          "dueAt": null,
+          "isOverdue": false
         }
         """;
 
@@ -39,7 +41,9 @@ public static class TicketOpenApiTransformer
           "status": 1,
           "createdAt": "2026-01-15T10:30:00+00:00",
           "assigneeId": 2,
-          "resolvedAt": null
+          "resolvedAt": null,
+          "dueAt": null,
+          "isOverdue": false
         }
         """;
 
@@ -53,7 +57,25 @@ public static class TicketOpenApiTransformer
           "status": 0,
           "createdAt": "2026-01-15T10:30:00+00:00",
           "assigneeId": null,
-          "resolvedAt": null
+          "resolvedAt": null,
+          "dueAt": null,
+          "isOverdue": false
+        }
+        """;
+
+    private const string TicketWithDeadlineResponseExample = """
+        {
+          "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+          "title": "Не працює принтер",
+          "description": "Принтер не друкує документи після заміни картриджа.",
+          "categoryId": 1,
+          "priority": 2,
+          "status": 0,
+          "createdAt": "2026-01-15T10:30:00+00:00",
+          "assigneeId": null,
+          "resolvedAt": null,
+          "dueAt": "2026-12-01T08:00:00+00:00",
+          "isOverdue": false
         }
         """;
 
@@ -65,9 +87,23 @@ public static class TicketOpenApiTransformer
         }
         """;
 
+    private const string DueAtValidationErrorExample = """
+        {
+          "DueAt": [
+            "Термін виконання має бути пізніше за поточний час."
+          ]
+        }
+        """;
+
     private const string AssignRequestExample = """
         {
           "assigneeId": 2
+        }
+        """;
+
+    private const string UpdateDeadlineRequestExample = """
+        {
+          "dueAt": "2026-12-01T10:00:00+02:00"
         }
         """;
 
@@ -138,6 +174,17 @@ public static class TicketOpenApiTransformer
             SetResponseDescription(operation, "200", "Заявку знайдено; повертається схема `TicketResponse`.");
             SetResponseDescription(operation, "404", "Заявку з таким UUID не знайдено; тіло відповіді відсутнє.");
             SetContentExample(operation, "200", JsonNode.Parse(TicketResponseExample)!);
+        }
+        else if (path == "api/tickets/{id}/deadline" && context.Description.HttpMethod == "PATCH")
+        {
+            operation.Summary = "Оновити термін виконання заявки";
+            operation.Description = "Приймає обов'язкове поле `dueAt` у форматі ISO 8601 із часовим зміщенням або `Z`. Термін має бути строго пізніше за поточний час UTC; успіх повертає заявку з нормалізованим до UTC `dueAt` і обчисленим `isOverdue`.";
+            SetRequestExample(operation, UpdateDeadlineRequestExample);
+            SetResponseDescription(operation, "200", "Термін оновлено; повертається заявка з датами в UTC.");
+            SetResponseDescription(operation, "400", "`dueAt` відсутній, має некоректний формат або є не пізнішим за поточний час; помилка повертається для поля `DueAt`.");
+            SetResponseDescription(operation, "404", "Заявку з таким UUID не знайдено; тіло відповіді відсутнє.");
+            SetContentExample(operation, "200", JsonNode.Parse(TicketWithDeadlineResponseExample)!);
+            SetContentExample(operation, "400", JsonNode.Parse(DueAtValidationErrorExample)!);
         }
         else if (path == "api/tickets/{id}/assignee" && context.Description.HttpMethod == "PATCH")
         {
