@@ -1,6 +1,7 @@
 using System.Globalization;
 using Support.Api.Data;
 using Support.Api.DTOs;
+using Support.Api.Models;
 
 namespace Support.Api.Services;
 
@@ -22,6 +23,17 @@ public sealed class TicketDeadlineService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var ticket = await ticketRepository.GetForAssignmentAsync(ticketId, cancellationToken);
+        if (ticket is null)
+        {
+            return new TicketDeadlineResult(null, TicketDeadlineError.TicketNotFound, EmptyErrors());
+        }
+
+        if (ticket.Status is Status.Resolved or Status.Closed)
+        {
+            return new TicketDeadlineResult(null, TicketDeadlineError.InvalidStatus, EmptyErrors());
+        }
+
         if (!TryParseDueAt(request.DueAt, out var dueAt))
         {
             return InvalidDueAt("Дата має бути у форматі ISO 8601 з часовим зміщенням або Z.");
@@ -32,12 +44,6 @@ public sealed class TicketDeadlineService(
         if (dueAt <= now)
         {
             return InvalidDueAt("Термін виконання має бути пізніше за поточний час.");
-        }
-
-        var ticket = await ticketRepository.GetForAssignmentAsync(ticketId, cancellationToken);
-        if (ticket is null)
-        {
-            return new TicketDeadlineResult(null, TicketDeadlineError.TicketNotFound, EmptyErrors());
         }
 
         ticket.DueAt = dueAt;

@@ -257,6 +257,7 @@ public static class TicketOpenApiTransformer
             SetResponseDescription(operation, "200", "Термін оновлено; повертається заявка з датами в UTC.");
             SetResponseDescription(operation, "400", "`dueAt` відсутній, має некоректний формат або є не пізнішим за поточний час; помилка повертається для поля `DueAt`.");
             SetResponseDescription(operation, "404", "Заявку з таким UUID не знайдено; тіло відповіді відсутнє.");
+            SetResponseDescription(operation, "409", "Заявка має статус `Resolved` або `Closed`; термін змінювати заборонено.");
             SetContentExample(operation, "200", JsonNode.Parse(TicketWithDeadlineResponseExample)!);
             SetContentExample(operation, "400", JsonNode.Parse(DueAtValidationErrorExample)!);
         }

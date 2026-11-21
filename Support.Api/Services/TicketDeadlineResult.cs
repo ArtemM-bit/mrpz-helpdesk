@@ -6,7 +6,8 @@ public enum TicketDeadlineError
 {
     None,
     InvalidDueAt,
-    TicketNotFound
+    TicketNotFound,
+    InvalidStatus
 }
 
 public sealed record TicketDeadlineResult(
