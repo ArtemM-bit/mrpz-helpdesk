@@ -207,7 +207,7 @@ public sealed class TicketContractsTests
     [InlineData(Status.InProgress, true)]
     [InlineData(Status.Resolved, false)]
     [InlineData(Status.Closed, false)]
-    public void TicketOverdueRules_AppliesStatusAndStrictDeadline(Status status, bool expected)
+    public void TicketOverdueRules_BeforeNow_AppliesStatus(Status status, bool expected)
     {
         var now = new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
         var ticket = new Ticket
@@ -217,6 +217,54 @@ public sealed class TicketContractsTests
         };
 
         Assert.Equal(expected, TicketOverdueRules.IsOverdue(ticket, now));
+    }
+
+    [Theory]
+    [InlineData(Status.New)]
+    [InlineData(Status.InProgress)]
+    [InlineData(Status.Resolved)]
+    [InlineData(Status.Closed)]
+    public void TicketOverdueRules_NullDueAt_IsNeverOverdue(Status status)
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.False(TicketOverdueRules.IsOverdue(new Ticket
+        {
+            DueAt = null,
+            Status = status
+        }, now));
+    }
+
+    [Theory]
+    [InlineData(Status.New)]
+    [InlineData(Status.InProgress)]
+    [InlineData(Status.Resolved)]
+    [InlineData(Status.Closed)]
+    public void TicketOverdueRules_DueAtEqualToNow_IsNeverOverdue(Status status)
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.False(TicketOverdueRules.IsOverdue(new Ticket
+        {
+            DueAt = now,
+            Status = status
+        }, now));
+    }
+
+    [Theory]
+    [InlineData(Status.New)]
+    [InlineData(Status.InProgress)]
+    [InlineData(Status.Resolved)]
+    [InlineData(Status.Closed)]
+    public void TicketOverdueRules_DueAtAfterNow_IsNeverOverdue(Status status)
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.False(TicketOverdueRules.IsOverdue(new Ticket
+        {
+            DueAt = now.AddTicks(1),
+            Status = status
+        }, now));
     }
 
     [Fact]
