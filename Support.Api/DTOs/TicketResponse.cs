@@ -21,4 +21,6 @@ public sealed record TicketResponse(
     Status Status,
     DateTimeOffset CreatedAt,
     int? AssigneeId,
-    DateTimeOffset? ResolvedAt);
+    DateTimeOffset? ResolvedAt,
+    DateTimeOffset? DueAt,
+    bool IsOverdue);

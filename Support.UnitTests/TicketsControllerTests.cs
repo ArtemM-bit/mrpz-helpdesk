@@ -415,7 +415,9 @@ public sealed class TicketsControllerTests
         Status.New,
         DateTimeOffset.UtcNow,
         null,
-        null);
+        null,
+        null,
+        false);
 
     private static IReadOnlyDictionary<string, string[]> EmptyErrors() =>
         new Dictionary<string, string[]>();

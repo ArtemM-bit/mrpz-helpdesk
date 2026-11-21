@@ -63,6 +63,8 @@ public sealed class SupportDbContext(DbContextOptions<SupportDbContext> options)
             entity.Property(ticket => ticket.CreatedAt)
                 .IsRequired();
 
+            entity.Property(ticket => ticket.DueAt);
+
             entity.HasOne(ticket => ticket.Assignee)
                 .WithMany(user => user.AssignedTickets)
                 .HasForeignKey(ticket => ticket.AssigneeId)

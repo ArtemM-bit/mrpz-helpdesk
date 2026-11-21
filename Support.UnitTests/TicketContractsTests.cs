@@ -39,6 +39,8 @@ public sealed class TicketContractsTests
         Assert.Equal(createdAt, ticket.CreatedAt);
         Assert.Null(ticket.AssigneeId);
         Assert.Null(ticket.ResolvedAt);
+        Assert.Null(ticket.DueAt);
+        Assert.Equal(TimeSpan.Zero, ticket.CreatedAt.Offset);
         Assert.Equal(request.Title, ticket.Title);
         Assert.Equal(request.Description, ticket.Description);
         Assert.Equal(request.CategoryId, ticket.CategoryId);
@@ -58,10 +60,12 @@ public sealed class TicketContractsTests
             Status = Status.InProgress,
             CreatedAt = DateTimeOffset.UtcNow,
             AssigneeId = 2,
-            ResolvedAt = DateTimeOffset.UtcNow
+            ResolvedAt = DateTimeOffset.UtcNow,
+            DueAt = new DateTimeOffset(2026, 1, 20, 15, 0, 0, TimeSpan.FromHours(2))
         };
 
-        var response = ticket.ToResponse();
+        var now = new DateTimeOffset(2026, 1, 21, 12, 0, 0, TimeSpan.Zero);
+        var response = ticket.ToResponse(now);
 
         Assert.Equal(ticket.Id, response.Id);
         Assert.Equal(ticket.Title, response.Title);
@@ -71,7 +75,30 @@ public sealed class TicketContractsTests
         Assert.Equal(ticket.Status, response.Status);
         Assert.Equal(ticket.CreatedAt, response.CreatedAt);
         Assert.Equal(ticket.AssigneeId, response.AssigneeId);
-        Assert.Equal(ticket.ResolvedAt, response.ResolvedAt);
+        Assert.Equal(ticket.ResolvedAt?.ToUniversalTime(), response.ResolvedAt);
+        Assert.Equal(ticket.DueAt?.ToUniversalTime(), response.DueAt);
+        Assert.True(response.IsOverdue);
+    }
+
+    [Fact]
+    public void Ticket_ToResponse_MapsNullDueAtWithoutOverdue()
+    {
+        var ticket = new Ticket
+        {
+            Id = Guid.NewGuid(),
+            Title = "Заявка",
+            Description = "Описание",
+            CategoryId = 1,
+            Priority = Priority.Low,
+            Status = Status.New,
+            CreatedAt = DateTimeOffset.UtcNow,
+            DueAt = null
+        };
+
+        var response = ticket.ToResponse();
+
+        Assert.Null(response.DueAt);
+        Assert.False(response.IsOverdue);
     }
 
     [Fact]
@@ -173,6 +200,22 @@ public sealed class TicketContractsTests
         Assert.False(users[0].IsSupportEmployee);
         Assert.True(users[1].IsSupportEmployee);
         Assert.All(users, user => Assert.False(string.IsNullOrWhiteSpace(user.FullName)));
+    }
+
+    [Fact]
+    public void SupportDbContext_ModelsDueAtAsNullableAndDoesNotPersistIsOverdue()
+    {
+        var options = new DbContextOptionsBuilder<SupportDbContext>()
+            .UseSqlServer("Server=(local);Database=SupportDb;Trusted_Connection=True;")
+            .Options;
+
+        using var context = new SupportDbContext(options);
+        var ticketType = context.Model.FindEntityType(typeof(Ticket))!;
+        var dueAt = ticketType.FindProperty(nameof(Ticket.DueAt))!;
+
+        Assert.True(dueAt.IsNullable);
+        Assert.Equal("datetimeoffset", dueAt.GetColumnType());
+        Assert.Null(ticketType.FindProperty(nameof(TicketResponse.IsOverdue)));
     }
 
     [Fact]

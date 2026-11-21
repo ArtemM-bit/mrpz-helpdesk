@@ -20,6 +20,8 @@ public sealed class Ticket
 
     public DateTimeOffset? ResolvedAt { get; set; }
 
+    public DateTimeOffset? DueAt { get; set; }
+
     public Category Category { get; set; } = null!;
 
     public User? Assignee { get; set; }

@@ -89,6 +89,9 @@ namespace Support.Api.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(4000)");
 
+                    b.Property<DateTimeOffset?>("DueAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("Priority")
                         .HasColumnType("int");
 
