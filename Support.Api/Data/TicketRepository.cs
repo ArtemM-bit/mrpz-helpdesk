@@ -91,6 +91,21 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
             .ToList();
     }
 
+    public async Task<IReadOnlyList<Ticket>> GetOverdueAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        var utcNow = now.ToUniversalTime();
+        return await dbContext.Tickets
+            .AsNoTracking()
+            .Where(ticket => ticket.DueAt.HasValue
+                && ticket.DueAt.Value < utcNow
+                && (ticket.Status == Status.New || ticket.Status == Status.InProgress))
+            .OrderBy(ticket => ticket.DueAt)
+            .ThenBy(ticket => ticket.Id)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default)
     {
         return dbContext.Users.SingleOrDefaultAsync(user => user.Id == id, cancellationToken);

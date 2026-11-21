@@ -18,6 +18,11 @@ public interface ITicketRepository
     Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<Ticket>> GetOverdueAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Ticket>>([]);
+
     Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default);
 
     Task AddCommentAsync(TicketComment comment, CancellationToken cancellationToken = default);
