@@ -17,7 +17,9 @@ public static class TicketOpenApiTransformer
             "status": 0,
             "createdAt": "2026-01-15T10:30:00+00:00",
             "assigneeId": null,
-            "resolvedAt": null
+            "resolvedAt": null,
+            "dueAt": null,
+            "isOverdue": false
           }
         ]
         """;
@@ -127,10 +129,29 @@ public static class TicketOpenApiTransformer
         }
         """;
 
-    private const string UpdateDeadlineRequestExample = """
+    private const string SetFirstDeadlineRequestExample = """
         {
           "dueAt": "2026-12-01T10:00:00+02:00"
         }
+        """;
+
+    private const string ReplaceOverdueDeadlineRequestExample = """
+        {
+          "dueAt": "2026-11-21T14:30:00Z"
+        }
+        """;
+
+    private const string ResolvedDeadlineConflictExample = """
+        {
+          "status": 2,
+          "dueAt": "2026-11-20T12:00:00+00:00",
+          "checkTime": "2026-11-21T12:00:00Z",
+          "result": "409 Conflict: deadline cannot be changed for Resolved or Closed tickets"
+        }
+        """;
+
+    private const string EmptyOverdueListExample = """
+        []
         """;
 
     private const string ChangeStatusRequestExample = """
@@ -244,9 +265,15 @@ public static class TicketOpenApiTransformer
         else if (path == "api/tickets/overdue" && context.Description.HttpMethod == "GET")
         {
             operation.Summary = "Отримати прострочені заявки";
-            operation.Description = "Повертає заявки зі встановленим терміном, де `DueAt < now` і статус `New` або `InProgress`. Терміни порівнюються відносно одного моменту поточного часу для всього запиту. Сортування: `DueAt` за зростанням, потім `Id`. Завершені заявки та заявки без терміну не повертаються. Якщо збігів немає, повертається порожній масив `200 OK`.";
+            operation.Description = """
+                Повертає заявки, для яких одночасно виконуються умови: `DueAt != null`, `DueAt < now` і `Status` дорівнює `New` або `InProgress`. Для всього відповіді сервіс отримує поточний час один раз, усі записи порівнюються з тим самим UTC-моментом `now`. Заявки зі статусом `Resolved` або `Closed` та заявки без терміну не входять до переліку, незалежно від значення дати.
+
+                Межа однозначна: якщо `DueAt == now`, `IsOverdue` дорівнює `false`. Лише строго менша дата є простроченням. Сортування — за `DueAt` за зростанням, потім за `Id` за зростанням. Якщо збігів немає, повертається `200 OK` з порожнім масивом `[]`.
+
+                Приклад перевірки: для `now = 2026-11-21T12:00:00Z` терміни `2026-11-21T13:00:00Z` та `2026-11-21T12:00:00Z` не є простроченими, а `2026-11-21T11:59:59Z` є простроченим для `New` або `InProgress`.
+                """;
             SetResponseDescription(operation, "200", "Повертається відсортований масив прострочених заявок або порожній масив.");
-            SetContentExample(operation, "200", JsonNode.Parse($"[{TicketWithDeadlineResponseExample}]")!);
+            SetContentExample(operation, "200", JsonNode.Parse(EmptyOverdueListExample)!);
         }
         else if (path == "api/tickets/{id}" && context.Description.HttpMethod == "GET")
         {
@@ -259,14 +286,33 @@ public static class TicketOpenApiTransformer
         else if (path == "api/tickets/{id}/deadline" && context.Description.HttpMethod == "PATCH")
         {
             operation.Summary = "Оновити термін виконання заявки";
-            operation.Description = "Приймає обов'язкове поле `dueAt` у форматі ISO 8601 із часовим зміщенням або `Z`. Термін має бути строго пізніше за поточний час UTC; успіх повертає заявку з нормалізованим до UTC `dueAt` і обчисленим `isOverdue`.";
-            SetRequestExample(operation, UpdateDeadlineRequestExample);
+            operation.Description = """
+                Приймає DTO `UpdateDeadlineRequest` з єдиним обов'язковим полем `DueAt` (`dueAt` у JSON). Значення має бути ISO 8601 з часовим зміщенням або суфіксом `Z`, наприклад `2026-12-01T10:00:00+02:00`, що еквівалентно `2026-12-01T08:00:00Z`, або `2026-12-01T10:00:00Z`. API нормалізує дату до UTC перед перевіркою та збереженням.
+
+                Для встановлення нового терміна використовується сувора межа `DueAt > now`: момент рівний поточному часу `DueAt == now` відхиляється так само як минулий термін `DueAt < now`. Ця перевірка відрізняється від ознаки прострочення під час читання: прострочена заявка визначається як `DueAt != null && DueAt < now && Status in (New, InProgress)`. Вона не містить `DueAt == now`, тому на межі `IsOverdue = false`.
+
+                Операція дозволена для активних статусів `New` і `InProgress`. Для `Resolved` або `Closed` повертається `409 Conflict`, а попередній термін не змінюється. Невідома заявка повертає `404`, а відсутній або некоректний термін — `400` із помилкою поля `DueAt`.
+
+                Приклад перевірки: при серверному `now = 2026-11-21T12:00:00Z` приймається `2026-11-21T14:30:00Z`; відхиляються `2026-11-21T12:00:00Z` і `2026-11-21T11:59:59Z`.
+
+                Приклад встановлення першого терміну:
+                ```json
+                { "dueAt": "2026-12-01T10:00:00+02:00" }
+                ```
+                Приклад заміни простроченого терміну:
+                ```json
+                { "dueAt": "2026-11-21T14:30:00Z" }
+                ```
+                Для заявок зі статусом `Resolved` або `Closed` такий запит не змінює попередній термін і повертає `409 Conflict`.
+                """;
+            SetRequestExample(operation, SetFirstDeadlineRequestExample);
             SetResponseDescription(operation, "200", "Термін оновлено; повертається заявка з датами в UTC.");
             SetResponseDescription(operation, "400", "`dueAt` відсутній, має некоректний формат або є не пізнішим за поточний час; помилка повертається для поля `DueAt`.");
             SetResponseDescription(operation, "404", "Заявку з таким UUID не знайдено; тіло відповіді відсутнє.");
             SetResponseDescription(operation, "409", "Заявка має статус `Resolved` або `Closed`; термін змінювати заборонено.");
             SetContentExample(operation, "200", JsonNode.Parse(TicketWithDeadlineResponseExample)!);
             SetContentExample(operation, "400", JsonNode.Parse(DueAtValidationErrorExample)!);
+            SetContentExample(operation, "409", JsonNode.Parse(ResolvedDeadlineConflictExample)!);
         }
         else if (path == "api/tickets/{id}/assignee" && context.Description.HttpMethod == "PATCH")
         {

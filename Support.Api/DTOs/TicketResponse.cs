@@ -12,6 +12,8 @@ namespace Support.Api.DTOs;
 /// <param name="CreatedAt">Час створення у форматі ISO 8601.</param>
 /// <param name="AssigneeId">ID призначеного працівника або null; це поле також використовується для фільтрації пошуку.</param>
 /// <param name="ResolvedAt">Час переходу в Resolved у форматі ISO 8601 або null.</param>
+/// <param name="DueAt">Термін виконання в UTC у форматі ISO 8601 або null, якщо термін ще не встановлено.</param>
+/// <param name="IsOverdue">Поточна ознака прострочення: true лише якщо DueAt задано, DueAt &lt; now і Status дорівнює New або InProgress.</param>
 public sealed record TicketResponse(
     Guid Id,
     string Title,
