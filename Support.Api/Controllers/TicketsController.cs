@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Data.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -44,6 +45,57 @@ public sealed class TicketsController(
                 statusCode: StatusCodes.Status500InternalServerError,
                 title: "Не вдалося зберегти заявку.");
         }
+    }
+
+    /// <summary>Шукає заявки за необов'язковими фільтрами та повертає їх у заданому порядку.</summary>
+    /// <remarks>
+    /// Різні фільтри комбінуються через AND. Пошуковий текст шукається без урахування регістру
+    /// в заголовку або описі (OR); значення, що складається лише з пробілів, ігнорується.
+    /// За замовчуванням заявки сортуються за датою створення за спаданням.
+    /// </remarks>
+    /// <param name="request">Необов'язкові параметри пошуку: search, categoryId, priority, status, assigneeId і sortDirection.</param>
+    /// <param name="cancellationToken">Токен скасування запиту.</param>
+    /// <response code="200">Список заявок, що відповідають фільтрам; якщо збігів немає, повертається порожній масив.</response>
+    /// <response code="400">Параметр невалідний; відповідь містить опис помилки для кожного некоректного поля.</response>
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<TicketResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<IReadOnlyList<TicketResponse>>> Search(
+        [FromQuery] TicketSearchRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var search = request ?? new TicketSearchRequest();
+        var validationResults = new List<ValidationResult>();
+        if (!Validator.TryValidateObject(
+            search,
+            new ValidationContext(search),
+            validationResults,
+            validateAllProperties: true))
+        {
+            var errors = validationResults
+                .SelectMany(result => result.MemberNames
+                    .DefaultIfEmpty(nameof(TicketSearchRequest))
+                    .Select(member => new
+                    {
+                        Member = member,
+                        Message = result.ErrorMessage ?? "Значення некоректне."
+                    }))
+                .GroupBy(error => error.Member)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(error => error.Message).ToArray());
+            return BadRequest(new ValidationProblemDetails(errors));
+        }
+
+        var normalized = search with
+        {
+            Search = string.IsNullOrWhiteSpace(search.Search) ? null : search.Search.Trim(),
+            SortDirection = string.IsNullOrWhiteSpace(search.SortDirection)
+                ? "desc"
+                : search.SortDirection.Trim().ToLowerInvariant()
+        };
+        var tickets = await ticketRepository.SearchAsync(normalized, cancellationToken);
+        return Ok(tickets.Select(ticket => ticket.ToResponse()).ToList());
     }
 
     [HttpGet("overdue")]

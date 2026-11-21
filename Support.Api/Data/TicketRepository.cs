@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Support.Api.DTOs;
 using Support.Api.Models;
 
 namespace Support.Api.Data;
@@ -22,6 +23,72 @@ public sealed class TicketRepository(SupportDbContext dbContext) : ITicketReposi
     {
         return dbContext.Tickets
             .SingleOrDefaultAsync(ticket => ticket.Id == id, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Ticket>> SearchAsync(
+        TicketSearchRequest search,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<Ticket> query = dbContext.Tickets.AsNoTracking();
+
+        if (search.Status.HasValue)
+        {
+            query = query.Where(ticket => ticket.Status == search.Status.Value);
+        }
+
+        if (search.Priority.HasValue)
+        {
+            query = query.Where(ticket => ticket.Priority == search.Priority.Value);
+        }
+
+        if (search.CategoryId.HasValue)
+        {
+            query = query.Where(ticket => ticket.CategoryId == search.CategoryId.Value);
+        }
+
+        if (search.AssigneeId.HasValue)
+        {
+            query = query.Where(ticket => ticket.AssigneeId == search.AssigneeId.Value);
+        }
+
+        var searchText = search.Search?.Trim();
+        if (!string.IsNullOrEmpty(searchText))
+        {
+            var normalizedSearchText = searchText.ToLower();
+            query = query.Where(ticket =>
+                ticket.Title.ToLower().Contains(normalizedSearchText)
+                || ticket.Description.ToLower().Contains(normalizedSearchText));
+        }
+
+        var sortDirection = search.SortDirection?.Trim();
+        query = string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase)
+            ? query.OrderBy(ticket => ticket.CreatedAt).ThenBy(ticket => ticket.Id)
+            : query.OrderByDescending(ticket => ticket.CreatedAt).ThenBy(ticket => ticket.Id);
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var ticketCounts = await dbContext.Tickets
+            .AsNoTracking()
+            .GroupBy(ticket => ticket.CategoryId)
+            .Select(group => new { CategoryId = group.Key, TicketCount = group.Count() })
+            .ToDictionaryAsync(group => group.CategoryId, group => group.TicketCount, cancellationToken);
+
+        var categories = await dbContext.Categories
+            .AsNoTracking()
+            .OrderBy(category => category.Id)
+            .Select(category => new { category.Id, category.Name })
+            .ToListAsync(cancellationToken);
+
+        return categories
+            .Select(category => new CategoryStatisticsResponse(
+                category.Id,
+                category.Name,
+                ticketCounts.GetValueOrDefault(category.Id)))
+            .ToList();
     }
 
     public async Task<IReadOnlyList<Ticket>> GetOverdueAsync(

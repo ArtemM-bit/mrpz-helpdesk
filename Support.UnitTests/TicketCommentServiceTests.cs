@@ -224,6 +224,13 @@ public sealed class TicketCommentServiceTests
         public Task<Ticket?> GetForAssignmentAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult<Ticket?>(ticket.Id == id ? ticket : null);
 
+        public Task<IReadOnlyList<Ticket>> SearchAsync(
+            TicketSearchRequest search,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Ticket>>([]);
+
+        public Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
+            CancellationToken cancellationToken = default) => throw new NotImplementedException();
+
         public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult<User?>(user?.Id == id ? user : null);
 

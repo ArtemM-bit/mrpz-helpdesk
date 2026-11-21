@@ -6,6 +6,32 @@ namespace Support.Api;
 
 public static class TicketOpenApiTransformer
 {
+    private const string TicketSearchResponseExample = """
+        [
+          {
+            "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+            "title": "Не працює принтер",
+            "description": "Принтер не друкує документи після заміни картриджа.",
+            "categoryId": 1,
+            "priority": 2,
+            "status": 0,
+            "createdAt": "2026-01-15T10:30:00+00:00",
+            "assigneeId": null,
+            "resolvedAt": null
+          }
+        ]
+        """;
+
+    private const string CategoryStatisticsResponseExample = """
+        [
+          { "categoryId": 1, "categoryName": "обладнання", "ticketCount": 2 },
+          { "categoryId": 2, "categoryName": "програмне забезпечення", "ticketCount": 1 },
+          { "categoryId": 3, "categoryName": "мережа", "ticketCount": 1 },
+          { "categoryId": 4, "categoryName": "доступ до облікового запису", "ticketCount": 0 },
+          { "categoryId": 5, "categoryName": "інше", "ticketCount": 0 }
+        ]
+        """;
+
     private const string CreateRequestExample = """
         {
           "title": "Не працює принтер",
@@ -146,7 +172,46 @@ public static class TicketOpenApiTransformer
     {
         var path = context.Description.RelativePath?.TrimStart('/');
 
-        if (path == "api/tickets" && context.Description.HttpMethod == "POST")
+        if (path == "api/tickets" && context.Description.HttpMethod == "GET")
+        {
+            operation.Summary = "Пошук заявок";
+            operation.Description = """
+                Повертає масив `TicketResponse`; якщо збігів немає, повертається `[]`. Усі параметри необов'язкові. Різні фільтри (`search`, `categoryId`, `priority`, `status`, `assigneeId`) комбінуються через AND. `search` шукає без урахування регістру в `Title` АБО `Description` (OR); зовнішні пробіли обрізаються, значення лише з пробілів ігнорується.
+
+                | Параметр | Тип | Допустимі значення | Типове значення |
+                | --- | --- | --- | --- |
+                | `search` | string | будь-який текст; порожній/пробільний текст не фільтрує | немає фільтра |
+                | `categoryId` | integer | додатний ID категорії; початкові категорії мають ID `1`–`5` | немає фільтра |
+                | `priority` | integer | `0` = `Low`, `1` = `Medium`, `2` = `High`, `3` = `Critical` | немає фільтра |
+                | `status` | integer | `0` = `New`, `1` = `InProgress`, `2` = `Resolved`, `3` = `Closed` | немає фільтра |
+                | `assigneeId` | integer | додатний ID відповідального працівника | немає фільтра |
+                | `sortDirection` | string | `asc` або `desc` (без урахування регістру; зовнішні пробіли обрізаються) | `desc` |
+
+                Сортування застосовується за `CreatedAt`; за однакового часу заявки впорядковуються за `Id` за зростанням. За `desc` дата сортується за спаданням, за `asc` — за зростанням.
+
+                `400 Bad Request` повертається з описом помилки для `categoryId` або `assigneeId`, що не перевищує 0, невизначеного коду `status` чи `priority`, або `sortDirection`, відмінного від `asc`/`desc`. Невідомий додатний `categoryId` або `assigneeId` сам по собі не є помилкою та дає порожній результат.
+                """;
+
+            foreach (var parameter in operation.Parameters)
+            {
+                var parameterName = parameter.Name?.Split('.').Last().ToLowerInvariant();
+                parameter.Description = parameterName switch
+                {
+                    "status" => "Необов'язковий визначений integer: 0 New, 1 InProgress, 2 Resolved, 3 Closed.",
+                    "priority" => "Необов'язковий визначений integer: 0 Low, 1 Medium, 2 High, 3 Critical.",
+                    "categoryid" => "Необов'язковий додатний integer ID категорії; початкові ID: 1–5.",
+                    "assigneeid" => "Необов'язковий додатний integer ID відповідального працівника.",
+                    "search" => "Необов'язковий рядок; пошук без урахування регістру в Title або Description, пробільне значення ігнорується.",
+                    "sortdirection" => "Необов'язковий рядок asc або desc; за замовчуванням desc.",
+                    _ => parameter.Description
+                };
+            }
+
+            SetResponseDescription(operation, "200", "Повертається масив заявок за схемою `TicketResponse`; він може бути порожнім.");
+            SetResponseDescription(operation, "400", "Параметр невалідний; повертається ValidationProblemDetails із повідомленнями про помилки.");
+            SetContentExample(operation, "200", JsonNode.Parse(TicketSearchResponseExample)!);
+        }
+        else if (path == "api/tickets" && context.Description.HttpMethod == "POST")
         {
             operation.Summary = "Створити заявку";
             operation.Description = """
@@ -166,6 +231,15 @@ public static class TicketOpenApiTransformer
             SetResponseDescription(operation, "400", "Помилки валідації у вигляді об'єкта, де ключ — назва поля, а значення — масив повідомлень.");
             SetContentExample(operation, "201", JsonNode.Parse(TicketResponseExample)!);
             SetContentExample(operation, "400", JsonNode.Parse(ValidationErrorExample)!);
+        }
+        else if (path == "api/statistics/categories" && context.Description.HttpMethod == "GET")
+        {
+            operation.Summary = "Статистика заявок за категоріями";
+            operation.Description = """
+                Повертає всі категорії у порядку `CategoryId` за зростанням. Поля: `categoryId` — integer ID категорії; `categoryName` — її назва (string); `ticketCount` — кількість заявок (integer). `ticketCount` охоплює всі збережені заявки незалежно від статусу чи query-фільтрів `GET /api/tickets`; цей маршрут не приймає фільтри. Категорії з нульовою кількістю заявок також включені.
+                """;
+            SetResponseDescription(operation, "200", "Усі категорії з кількістю заявок за всіма статусами; категорії без заявок мають `ticketCount: 0`.");
+            SetContentExample(operation, "200", JsonNode.Parse(CategoryStatisticsResponseExample)!);
         }
         else if (path == "api/tickets/overdue" && context.Description.HttpMethod == "GET")
         {
