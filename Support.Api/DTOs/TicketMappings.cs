@@ -14,12 +14,16 @@ public static class TicketMappings
             CategoryId = request.CategoryId,
             Priority = request.Priority,
             Status = Status.New,
-            CreatedAt = createdAt
+            CreatedAt = createdAt.ToUniversalTime(),
+            DueAt = null
         };
     }
 
-    public static TicketResponse ToResponse(this Ticket ticket)
+    public static TicketResponse ToResponse(this Ticket ticket, DateTimeOffset? currentTime = null)
     {
+        var dueAt = ticket.DueAt?.ToUniversalTime();
+        var now = (currentTime ?? DateTimeOffset.UtcNow).ToUniversalTime();
+
         return new TicketResponse(
             ticket.Id,
             ticket.Title,
@@ -27,8 +31,10 @@ public static class TicketMappings
             ticket.CategoryId,
             ticket.Priority,
             ticket.Status,
-            ticket.CreatedAt,
+            ticket.CreatedAt.ToUniversalTime(),
             ticket.AssigneeId,
-            ticket.ResolvedAt);
+            ticket.ResolvedAt?.ToUniversalTime(),
+            dueAt,
+            dueAt.HasValue && dueAt.Value < now);
     }
 }
