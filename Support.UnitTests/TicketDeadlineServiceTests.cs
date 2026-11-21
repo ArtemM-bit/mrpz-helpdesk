@@ -103,6 +103,27 @@ public sealed class TicketDeadlineServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_DueAtEqualToNow_RejectsAndKeepsPreviousDeadline()
+    {
+        var ticket = CreateTicket();
+        ticket.Status = Status.InProgress;
+        var previousDueAt = Now.AddDays(-1);
+        ticket.DueAt = previousDueAt;
+        var repository = new FakeTicketRepository(ticket);
+        var service = new TicketDeadlineService(repository, new FixedClock(Now));
+
+        var result = await service.UpdateAsync(
+            ticket.Id,
+            new UpdateDeadlineRequest { DueAt = "2026-11-21T12:00:00Z" });
+
+        Assert.False(result.IsSuccessful);
+        Assert.Equal(TicketDeadlineError.InvalidDueAt, result.Error);
+        Assert.Equal(previousDueAt, ticket.DueAt);
+        Assert.Equal(0, repository.SaveChangesCalls);
+        Assert.True(TicketOverdueRules.IsOverdue(ticket, Now));
+    }
+
+    [Fact]
     public async Task UpdateAsync_RepeatedDeadline_StoresReplacementAndClearsOverdue()
     {
         var ticket = CreateTicket();
@@ -189,6 +210,15 @@ public sealed class TicketDeadlineServiceTests
             GetForAssignmentCalls++;
             return Task.FromResult<Ticket?>(ticket?.Id == id ? ticket : null);
         }
+
+        public Task<IReadOnlyList<Ticket>> SearchAsync(
+            TicketSearchRequest search,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Ticket>>([]);
+
+        public Task<IReadOnlyList<CategoryStatisticsResponse>> GetCategoryStatisticsAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<CategoryStatisticsResponse>>([]);
 
         public Task<User?> GetUserByIdAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult<User?>(null);

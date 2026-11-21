@@ -227,7 +227,8 @@ public sealed class TicketsControllerTests
             repository,
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.Search(
             new TicketSearchRequest(
@@ -265,7 +266,8 @@ public sealed class TicketsControllerTests
             repository,
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.Search(
             new TicketSearchRequest(
@@ -591,8 +593,7 @@ public sealed class TicketsControllerTests
 
     private sealed class StubTicketRepository(
         Func<Guid, Task<Ticket?>>? getByIdAsync = null,
-        Func<TicketSearchRequest, Task<IReadOnlyList<Ticket>>>? searchAsync = null) : ITicketRepository
-        Func<Guid, Task<Ticket?>>? getByIdAsync = null,
+        Func<TicketSearchRequest, Task<IReadOnlyList<Ticket>>>? searchAsync = null,
         Func<DateTimeOffset, Task<IReadOnlyList<Ticket>>>? getOverdueAsync = null) : ITicketRepository
     {
         public Task AddAsync(Ticket ticket, CancellationToken cancellationToken = default) => Task.CompletedTask;
