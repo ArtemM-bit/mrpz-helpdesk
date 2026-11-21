@@ -21,6 +21,7 @@ public sealed class TicketsControllerTests
         var searchMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Search));
         var getByIdMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.GetById));
         var assignMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.Assign));
+        var deadlineMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.UpdateDeadline));
         var changeStatusMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.ChangeStatus));
         var createCommentMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.CreateComment));
         var getCommentsMethod = typeof(TicketsController).GetMethod(nameof(TicketsController.GetComments));
@@ -34,6 +35,8 @@ public sealed class TicketsControllerTests
         Assert.Equal("{id:guid}", getByIdMethod.GetCustomAttribute<HttpGetAttribute>()?.Template);
         Assert.NotNull(assignMethod);
         Assert.Equal("{id:guid}/assignee", assignMethod.GetCustomAttribute<HttpPatchAttribute>()?.Template);
+        Assert.NotNull(deadlineMethod);
+        Assert.Equal("{id:guid}/deadline", deadlineMethod.GetCustomAttribute<HttpPatchAttribute>()?.Template);
         Assert.NotNull(changeStatusMethod);
         Assert.Equal("{id:guid}/status", changeStatusMethod.GetCustomAttribute<HttpPatchAttribute>()?.Template);
         Assert.NotNull(createCommentMethod);
@@ -51,7 +54,8 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -73,7 +77,8 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -91,7 +96,8 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var actionResult = await controller.Create(ValidRequest(), CancellationToken.None);
 
@@ -119,7 +125,8 @@ public sealed class TicketsControllerTests
             })),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.GetById(ticket.Id, CancellationToken.None);
 
@@ -136,7 +143,8 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(_ => Task.FromResult<Ticket?>(null)),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.GetById(Guid.NewGuid(), CancellationToken.None);
 
@@ -240,13 +248,95 @@ public sealed class TicketsControllerTests
             new StubTicketAssignmentService(_ => Task.FromResult(
                 new TicketAssignmentResult(response, TicketAssignmentError.None))),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.Assign(response.Id, new AssignTicketRequest(2), CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status200OK, ok.StatusCode);
         Assert.Equal(response, ok.Value);
+    }
+
+    [Fact]
+    public async Task UpdateDeadline_ValidRequest_Returns200WithUpdatedTicket()
+    {
+        var response = CreateResponse() with
+        {
+            DueAt = new DateTimeOffset(2026, 12, 1, 10, 0, 0, TimeSpan.Zero),
+            IsOverdue = false
+        };
+        var request = new UpdateDeadlineRequest { DueAt = "2026-12-01T10:00:00Z" };
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            UnusedCommentService(),
+            new StubTicketDeadlineService((_, _) => Task.FromResult(
+                new TicketDeadlineResult(response, TicketDeadlineError.None, EmptyErrors()))));
+
+        var result = await controller.UpdateDeadline(response.Id, request, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status200OK, ok.StatusCode);
+        Assert.Equal(response, ok.Value);
+    }
+
+    [Theory]
+    [InlineData(TicketDeadlineError.InvalidDueAt, StatusCodes.Status400BadRequest)]
+    [InlineData(TicketDeadlineError.TicketNotFound, StatusCodes.Status404NotFound)]
+    public async Task UpdateDeadline_FailedOperation_ReturnsMappedStatus(
+        TicketDeadlineError deadlineError,
+        int expectedStatus)
+    {
+        var errors = deadlineError == TicketDeadlineError.InvalidDueAt
+            ? new Dictionary<string, string[]> { [nameof(UpdateDeadlineRequest.DueAt)] = ["Invalid due date."] }
+            : EmptyErrors();
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            UnusedCommentService(),
+            new StubTicketDeadlineService((_, _) => Task.FromResult(
+                new TicketDeadlineResult(null, deadlineError, errors))));
+
+        var result = await controller.UpdateDeadline(
+            Guid.NewGuid(), new UpdateDeadlineRequest { DueAt = "invalid" }, CancellationToken.None);
+
+        if (deadlineError == TicketDeadlineError.InvalidDueAt)
+        {
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+            Assert.Equal(expectedStatus, badRequest.StatusCode);
+            Assert.Contains(nameof(UpdateDeadlineRequest.DueAt),
+                Assert.IsAssignableFrom<IReadOnlyDictionary<string, string[]>>(badRequest.Value).Keys);
+        }
+        else
+        {
+            Assert.IsType<NotFoundResult>(result.Result);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateDeadline_StorageFailure_ReturnsSafeNon200Response()
+    {
+        const string privateDatabaseDetails = "private database connection details";
+        var controller = new TicketsController(
+            new StubTicketCreationService(_ => throw new InvalidOperationException()),
+            new StubTicketRepository(),
+            new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
+            UnusedStatusService(),
+            UnusedCommentService(),
+            new StubTicketDeadlineService((_, _) =>
+                Task.FromException<TicketDeadlineResult>(new DbUpdateException(privateDatabaseDetails))));
+
+        var result = await controller.UpdateDeadline(
+            Guid.NewGuid(), new UpdateDeadlineRequest { DueAt = "2026-12-01T10:00:00Z" }, CancellationToken.None);
+
+        var error = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status500InternalServerError, error.StatusCode);
+        Assert.DoesNotContain(privateDatabaseDetails, JsonSerializer.Serialize(error.Value));
     }
 
     [Fact]
@@ -259,7 +349,8 @@ public sealed class TicketsControllerTests
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
             new StubTicketCommentService((_, _) => Task.FromResult(
-                new TicketCommentResult(comment, TicketCommentError.None))));
+                new TicketCommentResult(comment, TicketCommentError.None))),
+            UnusedDeadlineService());
 
         var ticketId = Guid.NewGuid();
         var result = await controller.CreateComment(ticketId, new CreateCommentRequest(comment.Text), CancellationToken.None);
@@ -285,7 +376,8 @@ public sealed class TicketsControllerTests
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
             new StubTicketCommentService((_, _) => Task.FromResult(
-                new TicketCommentResult(null, commentError))));
+                new TicketCommentResult(null, commentError))),
+            UnusedDeadlineService());
 
         var result = await controller.CreateComment(
             Guid.NewGuid(),
@@ -309,7 +401,8 @@ public sealed class TicketsControllerTests
             new StubTicketRepository(),
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.GetComments(Guid.NewGuid(), CancellationToken.None);
 
@@ -332,7 +425,8 @@ public sealed class TicketsControllerTests
             new StubTicketAssignmentService(_ => Task.FromResult(
                 new TicketAssignmentResult(null, assignmentError))),
             UnusedStatusService(),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.Assign(Guid.NewGuid(), new AssignTicketRequest(2), CancellationToken.None);
 
@@ -355,7 +449,8 @@ public sealed class TicketsControllerTests
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             new StubTicketStatusService((_, _) => Task.FromResult(
                 new TicketStatusResult(response, TicketStatusError.None))),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.ChangeStatus(
             response.Id,
@@ -382,7 +477,8 @@ public sealed class TicketsControllerTests
             new StubTicketAssignmentService(_ => throw new InvalidOperationException()),
             new StubTicketStatusService((_, _) => Task.FromResult(
                 new TicketStatusResult(null, statusError))),
-            UnusedCommentService());
+            UnusedCommentService(),
+            UnusedDeadlineService());
 
         var result = await controller.ChangeStatus(
             Guid.NewGuid(),
@@ -426,6 +522,9 @@ public sealed class TicketsControllerTests
         new((_, _) => throw new InvalidOperationException());
 
     private static StubTicketCommentService UnusedCommentService() =>
+        new((_, _) => throw new InvalidOperationException());
+
+    private static StubTicketDeadlineService UnusedDeadlineService() =>
         new((_, _) => throw new InvalidOperationException());
 
     private sealed class StubTicketCreationService(
@@ -495,5 +594,14 @@ public sealed class TicketsControllerTests
             Guid ticketId,
             CreateCommentRequest request,
             CancellationToken cancellationToken = default) => createAsync(ticketId, request);
+    }
+
+    private sealed class StubTicketDeadlineService(
+        Func<Guid, UpdateDeadlineRequest, Task<TicketDeadlineResult>> updateAsync) : ITicketDeadlineService
+    {
+        public Task<TicketDeadlineResult> UpdateAsync(
+            Guid ticketId,
+            UpdateDeadlineRequest request,
+            CancellationToken cancellationToken = default) => updateAsync(ticketId, request);
     }
 }
