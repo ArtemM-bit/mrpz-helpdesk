@@ -60,6 +60,7 @@ public sealed class TicketsController(
     [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Dictionary<string, string[]>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<TicketResponse>> UpdateDeadline(
         Guid id,
@@ -73,6 +74,7 @@ public sealed class TicketsController(
             {
                 TicketDeadlineError.InvalidDueAt => BadRequest(result.Errors),
                 TicketDeadlineError.TicketNotFound => NotFound(),
+                TicketDeadlineError.InvalidStatus => Conflict(),
                 _ => Ok(result.Ticket)
             };
         }

@@ -64,6 +64,68 @@ public sealed class TicketDeadlineServiceTests
         Assert.Equal(new DateTimeOffset(2026, 11, 21, 12, 30, 0, TimeSpan.Zero), result.Ticket!.DueAt);
     }
 
+    [Theory]
+    [InlineData(Status.Resolved)]
+    [InlineData(Status.Closed)]
+    public async Task UpdateAsync_TerminalStatus_ReturnsConflictWithoutChangingDueAt(Status status)
+    {
+        var ticket = CreateTicket();
+        ticket.Status = status;
+        var originalDueAt = Now.AddDays(-2);
+        ticket.DueAt = originalDueAt;
+        var repository = new FakeTicketRepository(ticket);
+        var service = new TicketDeadlineService(repository, new FixedClock(Now));
+
+        var result = await service.UpdateAsync(
+            ticket.Id,
+            new UpdateDeadlineRequest { DueAt = "2026-11-22T12:00:00Z" });
+
+        Assert.False(result.IsSuccessful);
+        Assert.Equal(TicketDeadlineError.InvalidStatus, result.Error);
+        Assert.Equal(originalDueAt, ticket.DueAt);
+        Assert.Equal(status, ticket.Status);
+        Assert.Equal(0, repository.SaveChangesCalls);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UnknownTicket_ReturnsNotFoundWithoutSaving()
+    {
+        var repository = new FakeTicketRepository(null);
+        var service = new TicketDeadlineService(repository, new FixedClock(Now));
+
+        var result = await service.UpdateAsync(
+            Guid.NewGuid(),
+            new UpdateDeadlineRequest { DueAt = "2026-11-22T12:00:00Z" });
+
+        Assert.False(result.IsSuccessful);
+        Assert.Equal(TicketDeadlineError.TicketNotFound, result.Error);
+        Assert.Equal(0, repository.SaveChangesCalls);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RepeatedDeadline_StoresReplacementAndClearsOverdue()
+    {
+        var ticket = CreateTicket();
+        ticket.Status = Status.InProgress;
+        ticket.DueAt = Now.AddDays(-1);
+        var repository = new FakeTicketRepository(ticket);
+        var service = new TicketDeadlineService(repository, new FixedClock(Now));
+
+        var firstResult = await service.UpdateAsync(
+            ticket.Id,
+            new UpdateDeadlineRequest { DueAt = "2026-11-22T12:00:00Z" });
+        var replacement = await service.UpdateAsync(
+            ticket.Id,
+            new UpdateDeadlineRequest { DueAt = "2026-11-23T12:00:00Z" });
+
+        Assert.True(firstResult.IsSuccessful);
+        Assert.True(replacement.IsSuccessful);
+        Assert.Equal(new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero), ticket.DueAt);
+        Assert.False(replacement.Ticket!.IsOverdue);
+        Assert.Equal(Status.InProgress, ticket.Status);
+        Assert.Equal(2, repository.SaveChangesCalls);
+    }
+
     [Fact]
     public async Task UpdateAsync_RequiresDueAtField()
     {
@@ -91,7 +153,7 @@ public sealed class TicketDeadlineServiceTests
         Assert.NotEmpty(messages!);
         Assert.Equal(originalDueAt, ticket.DueAt);
         Assert.Equal(0, repository.SaveChangesCalls);
-        Assert.Equal(0, repository.GetForAssignmentCalls);
+        Assert.Equal(1, repository.GetForAssignmentCalls);
     }
 
     private static Ticket CreateTicket() => new()

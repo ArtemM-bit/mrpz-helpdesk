@@ -196,6 +196,7 @@ public sealed class TicketsControllerTests
     [Theory]
     [InlineData(TicketDeadlineError.InvalidDueAt, StatusCodes.Status400BadRequest)]
     [InlineData(TicketDeadlineError.TicketNotFound, StatusCodes.Status404NotFound)]
+    [InlineData(TicketDeadlineError.InvalidStatus, StatusCodes.Status409Conflict)]
     public async Task UpdateDeadline_FailedOperation_ReturnsMappedStatus(
         TicketDeadlineError deadlineError,
         int expectedStatus)
@@ -222,9 +223,14 @@ public sealed class TicketsControllerTests
             Assert.Contains(nameof(UpdateDeadlineRequest.DueAt),
                 Assert.IsAssignableFrom<IReadOnlyDictionary<string, string[]>>(badRequest.Value).Keys);
         }
-        else
+        else if (deadlineError == TicketDeadlineError.TicketNotFound)
         {
             Assert.IsType<NotFoundResult>(result.Result);
+        }
+        else
+        {
+            var conflict = Assert.IsType<ConflictResult>(result.Result);
+            Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);
         }
     }
 
