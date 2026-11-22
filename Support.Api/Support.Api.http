@@ -4,3 +4,14 @@ GET {{Support.Api_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+# Development: use an existing ticket ID and a seeded user (1 or 2).
+@ticketId = 6f9619ff-8b86-d011-b42d-00cf4fc964ff
+
+POST {{Support.Api_HostAddress}}/api/tickets/{{ticketId}}/comments
+Content-Type: application/json
+X-User-Id: 1
+
+{"text": "Коментар із Postman без авторизації."}
+
+###
