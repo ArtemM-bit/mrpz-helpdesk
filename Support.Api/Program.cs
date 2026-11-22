@@ -29,6 +29,11 @@ await using (var scope = app.Services.CreateAsyncScope())
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("../openapi/v1.json", "Support Helpdesk API v1");
+        options.DocumentTitle = "Support Helpdesk API — Swagger UI";
+    });
 }
 
 app.UseHttpsRedirection();

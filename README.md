@@ -22,7 +22,9 @@ REST API служби підтримки на .NET 10 і SQL Server. Через 
 
 Під час запуску API застосує міграції та додасть початкові категорії й користувачів. Якщо потрібно застосувати міграції окремо, встановіть EF Core CLI командою `dotnet tool install --global dotnet-ef --version 10.0.13` і скористайтеся [інструкцією для бази даних](docs/Database.md).
 
-Базова адреса API — `http://localhost:5132`. У профілі `http` також доступна [специфікація OpenAPI](http://localhost:5132/openapi/v1.json).
+Базова адреса API — `http://localhost:5132`. У середовищі `Development` доступний [Swagger UI](http://localhost:5132/swagger), де можна переглядати маршрути, схеми, приклади запитів і відповідей та виконувати запити через **Try it out → Execute**. Профілі `http` та `https` налаштовані відкривати сторінку `swagger` у браузері. Для профілю `https` адреса Swagger UI — `https://localhost:7230/swagger`.
+
+Swagger UI використовує наявну [специфікацію OpenAPI](http://localhost:5132/openapi/v1.json). Swagger UI та специфікація доступні лише в `Development`.
 
 ## Маршрути API
 
